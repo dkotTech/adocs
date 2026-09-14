@@ -1,0 +1,129 @@
+# Publishes a repository's documentation together with the adocs service.
+#
+# Put this file at .github/workflows/docs.yml in the repository whose documentation you want to show.
+#
+# What you get:
+#   - the image ghcr.io/<owner>/<repository>-docs with the documentation inside,
+#     tagged with the first 12 characters of the commit, latest and the git tag name on a release;
+#   - the artifact docs-bundle.tar.gz for running without Docker: the adocs binary, the archive and .env.
+#
+# Running the image:
+#   docker run -p 8080:8080 ghcr.io/<owner>/<repository>-docs:latest
+# Running the bundle:
+#   mkdir docs && tar xzf docs-bundle.tar.gz -C docs && cd docs && ./adocs
+
+name: docs
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  # Pin the service version: the documentation image then builds the same way on every run.
+  ADOCS_VERSION: "1.0.0"
+  # The service image on Docker Hub.
+  ADOCS_IMAGE: docker.io/DOCKERHUB_USER/adocs
+  # The service releases on GitHub and the binary's name in a release.
+  ADOCS_RELEASE_URL: https://github.com/GITHUB_OWNER/adocs/releases/download
+  ADOCS_ASSET: adocs-linux-x86_64
+
+jobs:
+  archive:
+    name: Repository archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tracked files only, without .git. Anything extra is excluded via export-ignore in .gitattributes.
+      # --prefix puts everything into a single directory, which the service strips.
+      - name: git archive
+        run: git archive --format=tar.gz --prefix=repo/ -o repo.tar.gz HEAD
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo-archive
+          path: repo.tar.gz
+          retention-days: 7
+
+  image:
+    name: Image with the documentation
+    needs: archive
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: repo-archive
+          path: image
+
+      # The build context holds only the archive and the Dockerfile, not the whole repository.
+      - name: Dockerfile
+        working-directory: image
+        run: |
+          cat > Dockerfile <<'EOF'
+          ARG ADOCS_IMAGE
+          ARG ADOCS_VERSION
+          FROM ${ADOCS_IMAGE}:${ADOCS_VERSION}
+          COPY repo.tar.gz /data/repo.tar.gz
+          EOF
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        working-directory: image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}-docs"
+          TAGS=(-t "$IMAGE:${GITHUB_SHA::12}" -t "$IMAGE:latest")
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAGS+=(-t "$IMAGE:$GITHUB_REF_NAME"); fi
+
+          docker build \
+            --build-arg ADOCS_IMAGE --build-arg ADOCS_VERSION \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            "${TAGS[@]}" .
+          docker push --all-tags "$IMAGE"
+
+  bundle:
+    name: Bundle without Docker
+    needs: archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: repo-archive
+          path: bundle/data
+
+      - name: adocs binary from a release
+        run: |
+          BASE="$ADOCS_RELEASE_URL/v$ADOCS_VERSION"
+          curl -fsSL -o bundle/adocs "$BASE/$ADOCS_ASSET"
+          # If the release carries SHA256SUMS, the binary is checked against it, otherwise the step fails.
+          if curl -fsSL -o SHA256SUMS "$BASE/SHA256SUMS"; then
+            grep " $ADOCS_ASSET\$" SHA256SUMS | sed "s| $ADOCS_ASSET\$| adocs|" > bundle.sha256
+            (cd bundle && sha256sum -c ../bundle.sha256)
+          fi
+          chmod +x bundle/adocs
+
+      - name: Build the bundle
+        run: |
+          cat > bundle/.env <<'EOF'
+          ADOCS_DATA_DIR=data
+          ADOCS_ARCHIVE=repo.tar.gz
+          ADOCS_CACHE_DIR=cache
+          APP_HOST=0.0.0.0
+          APP_PORT=8080
+          EOF
+          tar czf docs-bundle.tar.gz -C bundle .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-bundle
+          path: docs-bundle.tar.gz

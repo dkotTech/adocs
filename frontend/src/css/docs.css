@@ -1,0 +1,579 @@
+/* ── Layout: sidebar + content ──
+   The sidebar is always position: fixed; .sidebar-slot reserves room for it
+   and animates its width when the tree is collapsed. */
+
+.docs-layout {
+  display: flex;
+  min-height: calc(100vh - var(--nav-h));
+}
+
+.sidebar-slot {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  transition: width var(--t-med) var(--ease);
+}
+
+.docs-layout--collapsed .sidebar-slot {
+  width: 0;
+}
+
+.sidebar {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-w);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  transition: transform var(--t-med) var(--ease), opacity var(--t-med) var(--ease), box-shadow var(--t-med);
+}
+
+.docs-layout--collapsed .sidebar {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The tree over the content on button hover */
+.docs-layout--peek .sidebar {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--surface);
+  box-shadow: 12px 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: var(--nav-h) 0 0 0;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.35);
+  animation: fade-in var(--t-fast);
+}
+
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 12px 6px;
+  padding: 0 10px;
+  height: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.sidebar-search:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.sidebar-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  box-shadow: none !important;
+}
+
+.sidebar-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px 24px;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  padding: 24px 40px 80px;
+}
+
+.content-toolbar {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+}
+
+.content-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  transition: max-width var(--t-med) var(--ease);
+}
+
+.docs-layout--wide .content-inner {
+  max-width: 2400px;
+}
+
+@media (max-width: 1024px) {
+  .content {
+    padding: 20px 20px 60px;
+  }
+  .content-toolbar {
+    right: 10px;
+    top: 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    width: min(var(--sidebar-w), 86vw);
+  }
+  .content {
+    padding: 16px 14px 48px;
+  }
+}
+
+/* ── Tree ── */
+
+.tree {
+  list-style: none;
+  font-size: 13.5px;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.tree-row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tree-row--active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.tree-row--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.tree-row--active:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.tree-arrow {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: transform var(--t-fast) var(--ease), color var(--t-fast);
+}
+
+.tree-arrow--open {
+  transform: rotate(90deg);
+}
+
+.tree-row:hover .tree-arrow {
+  color: var(--text-muted);
+}
+
+.tree-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.tree-dir > .tree-row .tree-name {
+  font-weight: 550;
+  color: var(--text);
+}
+
+.tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+/* Smooth expansion: grid 0fr -> 1fr */
+.tree-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-med) var(--ease), opacity var(--t-med);
+  opacity: 0;
+  visibility: hidden;
+}
+
+.tree-children > .tree {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tree-children--open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+}
+
+.tree-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.tree-row:hover .tree-actions,
+.tree-row:focus-within .tree-actions {
+  opacity: 1;
+}
+
+.tree-actions .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.tree-empty {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+/* ── Document ── */
+
+.doc {
+  animation: fade-up var(--t-med) var(--ease);
+  transition: opacity var(--t-fast);
+}
+
+.doc--stale {
+  opacity: 0.6;
+}
+
+.doc-skeleton {
+  height: 240px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.doc-header {
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.doc-path {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+
+.doc-path-last {
+  color: var(--text-muted);
+}
+
+.doc-path-sep {
+  margin: 0 6px;
+  opacity: 0.6;
+}
+
+.doc-title {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.6px;
+  line-height: 1.2;
+}
+
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.doc-status {
+  font-size: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.doc-welcome {
+  padding-top: 40px;
+  animation: fade-up var(--t-med) var(--ease);
+}
+
+.doc-welcome-kicker {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.doc-welcome h1 {
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -0.7px;
+  margin-bottom: 12px;
+}
+
+.welcome-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: border-color var(--t-fast), transform var(--t-fast), background var(--t-fast);
+}
+
+.welcome-card:hover {
+  border-color: var(--border-focus);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+
+.welcome-card-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.doc-image {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.frame {
+  width: 100%;
+  height: calc(100vh - var(--nav-h) - 220px);
+  min-height: 500px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+pre.code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+pre.code code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ── Rendered markdown ── */
+
+.md {
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.md > * + * {
+  margin-top: 14px;
+}
+
+.md h1, .md h2, .md h3, .md h4 {
+  font-weight: 650;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
+  margin-top: 34px;
+}
+
+.md h1 { font-size: 26px; }
+.md h2 { font-size: 22px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.md h3 { font-size: 18px; }
+.md h4 { font-size: 16px; }
+
+.md ul, .md ol {
+  padding-left: 24px;
+}
+
+.md li + li {
+  margin-top: 4px;
+}
+
+.md pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.md pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px 14px;
+  color: var(--text-muted);
+}
+
+.md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+
+.md th, .md td {
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.md th {
+  background: var(--surface);
+}
+
+.md tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.md img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.md input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--accent);
+}
+
+.md a {
+  text-decoration: none;
+  border-bottom: 1px solid rgba(138, 180, 248, 0.35);
+  transition: border-color var(--t-fast);
+}
+
+.md a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* -- Code highlighting (Shiki) -- */
+
+.code-view pre.shiki {
+  margin: 0;
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.code-view pre.shiki code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md .code-view pre.shiki {
+  font-size: 13.5px;
+}
+
+/* Line numbers for sources: a CSS counter, so they stay out of copied text. */
+.code-view--numbered pre.shiki {
+  padding-left: 0;
+}
+
+.code-view--numbered pre.shiki code {
+  counter-reset: line;
+}
+
+.code-view--numbered pre.shiki .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  width: 3.5em;
+  margin-right: 14px;
+  padding-right: 12px;
+  text-align: right;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+
+/* -- A search hit inside the opened document -- */
+
+mark.search-target {
+  background: rgba(250, 204, 21, 0.5);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.3);
+  animation: search-hit-in 1.6s var(--ease);
+}
+
+.code-view pre.shiki .line--hit {
+  display: inline-block;
+  min-width: 100%;
+  background: rgba(250, 204, 21, 0.12);
+  box-shadow: inset 3px 0 0 #facc15;
+  animation: search-hit-in 1.6s var(--ease);
+}
+
+@keyframes search-hit-in {
+  from { background: rgba(250, 204, 21, 0.45); }
+}
