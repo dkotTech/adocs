@@ -1,7 +1,7 @@
 # Every push to master publishes a release: the next patch version after the last vX.Y.Z tag,
 # starting with v0.1.0. Pushing a vX.Y.Z tag by hand releases exactly that version, which is how
 # a minor or major version starts. The release carries the static binary adocs-linux-x86_64 and
-# SHA256SUMS, the names examples/ci expects.
+# SHA256SUMS, the names DEPLOY.md refers to.
 #
 # Docker Hub is optional: with the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets set, the same
 # image is pushed as <user>/adocs:<version> and :latest (the version without "v").

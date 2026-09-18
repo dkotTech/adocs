@@ -37,9 +37,8 @@ git archive --format=tar.gz --prefix=repo/ -o repo.tar.gz HEAD
 cp repo.tar.gz /data/.repo.tar.gz.tmp && mv /data/.repo.tar.gz.tmp /data/repo.tar.gz
 ```
 
-Replace the archive atomically (rename on a volume; S3 uploads already are). `examples/ci` has ready
-pipelines for GitHub Actions and Bitbucket: they build an image with the archive inside and a bundle
-with the release binary, the archive and `.env`.
+Replace the archive atomically (rename on a volume; S3 uploads already are), then call
+`POST /api/refresh`. Delivery options and deployment rules are in `DEPLOY.md`.
 
 ## Deployment
 
