@@ -1,6 +1,7 @@
 import type { HighlighterCore, LanguageInput } from 'shiki/core';
 
-const THEME = 'github-dark-default';
+// The dark theme is on screen; the light one is carried in --shiki-light variables for printing.
+const THEMES = { dark: 'github-dark-default', light: 'github-light-default' };
 
 /**
  * Grammars for the supported languages. Each one lands in its own build chunk
@@ -51,7 +52,7 @@ function core(): Promise<HighlighterCore> {
   highlighter ??= Promise.all([import('shiki/core'), import('shiki/engine/javascript')]).then(
     ([{ createHighlighterCore }, { createJavaScriptRegexEngine }]) =>
       createHighlighterCore({
-        themes: [import('@shikijs/themes/github-dark-default')],
+        themes: [import('@shikijs/themes/github-dark-default'), import('@shikijs/themes/github-light-default')],
         langs: [],
         // The JavaScript regular expression engine: no WASM and no extra weight.
         // forgiving skips the rare constructs the engine does not support instead of throwing.
@@ -91,7 +92,7 @@ export async function highlight(code: string, lang: string): Promise<string | nu
   const h = await withLanguage(lang);
   if (!h) return null;
   // A trailing newline would add one more empty numbered line.
-  return h.codeToHtml(code.replace(/\n$/, ''), { lang, theme: THEME });
+  return h.codeToHtml(code.replace(/\n$/, ''), { lang, themes: THEMES, defaultColor: 'dark' });
 }
 
 /**

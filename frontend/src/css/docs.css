@@ -577,3 +577,115 @@ mark.search-target {
 @keyframes search-hit-in {
   from { background: rgba(250, 204, 21, 0.45); }
 }
+
+/* The hidden frame an HTML document is printed from */
+.print-frame {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border: 0;
+}
+
+/* -- Print, used by "PDF": only the document on a light page -- */
+
+@media print {
+  :root {
+    --bg: #fff;
+    --surface: #f6f8fa;
+    --surface-2: #eff1f3;
+    --surface-3: #e6e8eb;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --text-muted: #59636e;
+    --text-dim: #818b98;
+    --accent: #0969da;
+  }
+
+  @page {
+    margin: 16mm 14mm;
+  }
+
+  body {
+    min-height: 0;
+  }
+
+  .app-nav, .sidebar, .sidebar-slot, .sidebar-backdrop, .content-toolbar, .doc-meta,
+  .search-backdrop, .search-dialog {
+    display: none !important;
+  }
+
+  .docs-layout {
+    display: block;
+    min-height: 0;
+  }
+
+  .content, .content-inner {
+    padding: 0;
+    max-width: none;
+  }
+
+  .doc, .doc-welcome {
+    animation: none;
+  }
+
+  /* Long lines wrap instead of being cut at the page edge. */
+  .code-view pre.shiki, pre.code, .md pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* A wrapped source line continues after the number column, not under it. */
+  .code-view--numbered pre.shiki .line {
+    display: inline-block;
+    width: 100%;
+    padding-left: calc(3.5em + 14px);
+    text-indent: calc(-3.5em - 14px);
+  }
+
+  .code-view--numbered pre.shiki .line::before {
+    text-indent: 0;
+  }
+
+  /* Paper: code takes the light theme Shiki put into --shiki-light variables.
+     "PDF" (the pdf-export class) keeps the dark colors that are inline, as on screen. */
+  html:not(.pdf-export) .shiki, html:not(.pdf-export) .shiki span {
+    color: var(--shiki-light) !important;
+  }
+
+  .code-view pre.shiki {
+    background-color: var(--surface) !important;
+  }
+
+  .pdf-export .code-view pre.shiki {
+    background-color: #0d1117 !important;
+    border-color: #0d1117;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .pdf-export .code-view--numbered pre.shiki .line::before {
+    color: #6e7681;
+    border-color: #30363d;
+  }
+
+  .md h1, .md h2, .md h3, .md h4 {
+    break-after: avoid;
+  }
+
+  .md img, .md tr, .md blockquote {
+    break-inside: avoid;
+  }
+
+  mark.search-target {
+    background: none;
+    box-shadow: none;
+    color: inherit;
+  }
+
+  .code-view pre.shiki .line--hit {
+    background: none;
+    box-shadow: none;
+  }
+}

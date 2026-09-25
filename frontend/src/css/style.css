@@ -380,6 +380,11 @@ input::placeholder {
   background: var(--surface-3);
 }
 
+button.pill {
+  font-family: inherit;
+  cursor: pointer;
+}
+
 /* ── Modal ── */
 
 .modal-overlay {

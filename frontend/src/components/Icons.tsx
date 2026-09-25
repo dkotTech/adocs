@@ -32,5 +32,6 @@ export const ExternalLink = (p: IconProps) => svg(p, <><path d="M15 3h6v6M10 14 
 export const Folder = (p: IconProps) => svg(p, <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />);
 export const File = (p: IconProps) => svg(p, <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></>);
 export const Download = (p: IconProps) => svg(p, <><path d="M12 3v12M6 11l6 6 6-6M4 21h16" /></>);
+export const Printer = (p: IconProps) => svg(p, <><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></>);
 export const Close = (p: IconProps) => svg(p, <path d="M18 6 6 18M6 6l12 12" />);
 export const Refresh = (p: IconProps) => svg(p, <><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" /><path d="M21 3v5h-5M3 21v-5h5" /></>);

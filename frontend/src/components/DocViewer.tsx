@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { rawUrl } from '../api/docs';
 import type { DocMeta } from '../api/types';
 import { build, currentPath, dirOf, doc, docError, docLoading, docUrl, formatDate, formatSize, openDoc, resolveRelative } from '../store';
 import { CodeView } from './CodeView';
-import { Download, ExternalLink } from './Icons';
+import { Download, ExternalLink, Printer } from './Icons';
 
 function isRelative(href: string): boolean {
   return !/^([a-z]+:|\/|#)/i.test(href);
@@ -61,7 +61,63 @@ function Breadcrumbs({ path }: { path: string }) {
   );
 }
 
-function DocHeader({ meta }: { meta: DocMeta }) {
+/** The browser's print dialog; print styles in docs.css leave only the document on a light page.
+ *  "Print" makes code blocks light too, "PDF" keeps them dark as on screen (the pdf-export class).
+ *  The title becomes the suggested file name. */
+function printDoc(title: string, pdf: boolean) {
+  const root = document.documentElement;
+  const previous = document.title;
+  document.title = title;
+  root.classList.toggle('pdf-export', pdf);
+  window.addEventListener(
+    'afterprint',
+    () => {
+      document.title = previous;
+      root.classList.remove('pdf-export');
+    },
+    { once: true },
+  );
+  window.print();
+}
+
+/** An HTML document from the archive is untrusted: it is printed from a hidden frame where no script
+ *  of it runs (no allow-scripts), so the frame may share the origin and be printed from here.
+ *  Relative styles and images resolve against /raw through <base>. */
+async function exportHtmlPdf(meta: DocMeta) {
+  const res = await fetch(rawUrl(meta.path));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const page = new DOMParser().parseFromString(await res.text(), 'text/html');
+  const base = page.createElement('base');
+  base.href = new URL(rawUrl(meta.path), location.href).href;
+  page.head.prepend(base);
+  if (!page.title) page.title = meta.title;
+
+  // A frame whose afterprint never came is dropped here.
+  document.querySelectorAll('.print-frame').forEach((f) => f.remove());
+  const frame = document.createElement('iframe');
+  frame.className = 'print-frame';
+  frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
+  frame.srcdoc = '<!doctype html>' + page.documentElement.outerHTML;
+  frame.onload = () => {
+    const win = frame.contentWindow!;
+    win.addEventListener('afterprint', () => frame.remove(), { once: true });
+    win.print();
+  };
+  document.body.append(frame);
+}
+
+function DocHeader({ meta, kind }: { meta: DocMeta; kind: string }) {
+  const [busy, setBusy] = useState(false);
+  const printable = kind === 'html' || kind === 'text' || kind === 'frame';
+
+  function onPdf() {
+    if (kind !== 'frame') return printDoc(meta.title, true);
+    setBusy(true);
+    exportHtmlPdf(meta)
+      .catch((e) => console.error('PDF export failed', e))
+      .finally(() => setBusy(false));
+  }
+
   return (
     <header class="doc-header">
       <Breadcrumbs path={meta.path} />
@@ -73,6 +129,16 @@ function DocHeader({ meta }: { meta: DocMeta }) {
         <a class="pill pill-link" href={rawUrl(meta.path)} target="_blank" rel="noopener">
           <ExternalLink size={13} /> raw
         </a>
+        {printable && (
+          <button type="button" class="pill pill-link" title="Save as PDF" disabled={busy} onClick={onPdf}>
+            <Download size={13} /> PDF
+          </button>
+        )}
+        {printable && kind !== 'frame' && (
+          <button type="button" class="pill pill-link" title="Print on a light page" onClick={() => printDoc(meta.title, false)}>
+            <Printer size={13} /> Print
+          </button>
+        )}
       </div>
     </header>
   );
@@ -168,7 +234,7 @@ export function DocViewer() {
 
   return (
     <article class={`doc ${docLoading.value ? 'doc--stale' : ''}`} key={d.meta.path}>
-      <DocHeader meta={d.meta} />
+      <DocHeader meta={d.meta} kind={d.render.kind} />
       {body}
     </article>
   );
