@@ -7,6 +7,7 @@ use crate::content::{DocMeta, Outcome, Status, Store};
 use crate::errors::AppError;
 use crate::paths;
 use crate::render::{self, Render};
+use crate::sheet;
 
 // GET /api/tree - the directory tree of the current version
 pub async fn tree(store: web::Data<Store>) -> HttpResponse {
@@ -19,12 +20,15 @@ pub struct BuildInfo {
     #[serde(flatten)]
     pub status: Status,
     pub search_regex: bool,
+    /// The organization's OAuth client for export to Google Drive, `null` when the export is off.
+    pub google_client_id: Option<String>,
 }
 
 fn build_info(cfg: &Config, store: &Store) -> BuildInfo {
     BuildInfo {
         status: store.status(),
         search_regex: cfg.search_regex,
+        google_client_id: cfg.google_client_id.clone(),
     }
 }
 
@@ -66,12 +70,29 @@ pub struct DocResponse {
 
 // GET /api/docs/{path} - metadata and content prepared for display
 pub async fn get(
+    cfg: web::Data<Config>,
     store: web::Data<Store>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let path = paths::normalize(&path)?;
     let index = store.current();
     let meta = index.get(&path).cloned().ok_or(AppError::NotFound)?;
+
+    // A table is parsed outside the runtime: the whole book is read and that is not quick. One
+    // that cannot be read falls through to the usual rendering, where a csv is still plain text.
+    if sheet::is_sheet(&meta.path) {
+        let worker = (index.clone(), meta.clone(), cfg.sheets.clone());
+        let book = web::block(move || sheet::workbook(&worker.0, &worker.1, &worker.2))
+            .await
+            .map_err(|_| AppError::Internal)?;
+        if let Some(book) = book {
+            return Ok(HttpResponse::Ok().json(DocResponse {
+                render: Render::Sheet(book),
+                meta,
+            }));
+        }
+    }
+
     let data = if render::needs_data(&meta) {
         let bytes = web::block(move || index.read(&path))
             .await

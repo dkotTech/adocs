@@ -9,6 +9,7 @@ mod paths;
 mod render;
 mod routes;
 mod search;
+mod sheet;
 mod tree;
 
 #[tokio::main]

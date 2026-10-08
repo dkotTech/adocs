@@ -3,6 +3,7 @@ import { ApiError } from './api/client';
 import { getBuild, getDoc, getTree, encodePath, postRefresh, searchDocs, type SearchParams } from './api/docs';
 import { highlight, highlightMarkdown, langForPath, preload } from './highlight';
 import type { BuildInfo, DocResponse, SearchFile, SearchHit, SearchResponse, TreeNode } from './api/types';
+import { sheetTarget } from './components/SheetView';
 import { markLine, markText, plainLines, type SearchTarget } from './marks';
 
 // The document tree (cached on the server, here the last loaded copy)
@@ -131,6 +132,10 @@ async function prepare(res: DocResponse, target: SearchTarget | null): Promise<D
     let body = await withTimeout(highlightMarkdown(res.render.body), HIGHLIGHT_WAIT_MS, res.render.body);
     if (target) body = markText(body, target);
     return { ...res, render: { kind: 'html', body }, jump: !!target };
+  }
+  if (res.render.kind === 'sheet' && target) {
+    // The hit points at a line of the table's text form; the view needs a sheet and a row.
+    return { ...res, sheetTarget: sheetTarget(res.render.body, target.line) };
   }
   return res;
 }

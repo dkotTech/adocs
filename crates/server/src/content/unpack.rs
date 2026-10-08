@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 
 use super::archive::{Format, detect_format, read_tar, read_zip};
 use super::cache::{BUF_SIZE, VERSION_NAME_LEN, hex, too_big};
+use crate::config::SheetLimits;
+
 use super::index::{Index, assemble};
 use crate::paths;
 
@@ -25,6 +27,7 @@ pub(super) fn build_version(
     cache: &Path,
     hash: &str,
     limit: u64,
+    sheets: &SheetLimits,
 ) -> Result<Index, String> {
     let short = &hash[..VERSION_NAME_LEN];
     let staging = cache.join(format!("{short}.tmp"));
@@ -34,7 +37,7 @@ pub(super) fn build_version(
     let result = extract(archive, &staging, limit).and_then(|entries| {
         let final_dir = free_version_dir(cache, short);
         let entries = move_into_place(entries, &staging, &final_dir)?;
-        Ok(assemble(entries, final_dir))
+        Ok(assemble(entries, final_dir, sheets))
     });
     let _ = fs::remove_dir_all(&staging);
     result

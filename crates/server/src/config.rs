@@ -1,5 +1,24 @@
 use std::path::PathBuf;
 
+/// What a table may cost before it is cut short. A whole book is held in memory while it is read
+/// and then handed to a browser, so every one of these is a ceiling and not a target.
+#[derive(Clone)]
+pub struct SheetLimits {
+    /// A larger file is not opened at all and stays a download.
+    pub max_bytes: i64,
+    pub max_rows: usize,
+    pub max_cols: usize,
+    /// Cells in one sheet. Rows and columns multiply, so this is what bounds the memory and the
+    /// size of the answer: on a 41-column dataset 200k cells are about 2.4 MB of JSON. It no longer
+    /// decides how the table scrolls - the view keeps only the rows in sight in the document.
+    pub max_cells: usize,
+    pub max_sheets: usize,
+    /// A longer cell is cut: the view is for looking at a table, not for reading an essay.
+    pub max_cell_chars: usize,
+    /// Column names listed in the one-line summary for llms.txt.
+    pub summary_columns: usize,
+}
+
 #[derive(Clone)]
 pub struct Config {
     pub host: String,
@@ -23,6 +42,11 @@ pub struct Config {
     pub max_total_bytes: u64,
     /// Whether the public search API accepts regular expressions.
     pub search_regex: bool,
+    /// Limits for reading tables.
+    pub sheets: SheetLimits,
+    /// OAuth client of the organization for export to Google Drive. A public identifier, not a
+    /// secret: it is handed to the browser. Empty turns the export off.
+    pub google_client_id: Option<String>,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -40,6 +64,16 @@ pub fn host_name(authority: &str) -> &str {
             }
         }
         _ => authority,
+    }
+}
+
+fn env_num<T: std::str::FromStr>(key: &str, default: T) -> Result<T, String> {
+    match std::env::var(key) {
+        Ok(value) if !value.trim().is_empty() => value
+            .trim()
+            .parse()
+            .map_err(|_| format!("{key} must be a number")),
+        _ => Ok(default),
     }
 }
 
@@ -73,6 +107,16 @@ impl Config {
 
         let search_regex = env_bool("ADOCS_SEARCH_REGEX")?;
 
+        let sheets = SheetLimits {
+            max_bytes: env_num::<i64>("ADOCS_SHEET_MAX_MB", 64)? * 1024 * 1024,
+            max_rows: env_num("ADOCS_SHEET_MAX_ROWS", 20_000)?,
+            max_cols: env_num("ADOCS_SHEET_MAX_COLS", 512)?,
+            max_cells: env_num("ADOCS_SHEET_MAX_CELLS", 200_000)?,
+            max_sheets: env_num("ADOCS_SHEET_MAX_SHEETS", 64)?,
+            max_cell_chars: env_num("ADOCS_SHEET_MAX_CELL_CHARS", 2_000)?,
+            summary_columns: env_num("ADOCS_SHEET_SUMMARY_COLUMNS", 24)?,
+        };
+
         let cache_dir = std::env::var("ADOCS_CACHE_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| std::env::temp_dir().join("adocs"));
@@ -98,6 +142,11 @@ impl Config {
             cache_dir,
             max_total_bytes: max_mb * 1024 * 1024,
             search_regex,
+            sheets,
+            google_client_id: std::env::var("GOOGLE_CLIENT_ID")
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
         })
     }
 }

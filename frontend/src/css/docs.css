@@ -689,3 +689,143 @@ mark.search-target {
     box-shadow: none;
   }
 }
+
+/* -- Spreadsheet -- */
+
+.sheet-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+}
+
+.sheet-tab {
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sheet-tab:hover {
+  color: var(--text);
+  border-color: var(--border-focus);
+}
+
+.sheet-tab--on {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-focus);
+}
+
+.sheet-scroll {
+  overflow: auto;
+  max-height: 75vh;
+  /* The frame hugs a narrow table instead of stretching an empty field beside it. */
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.sheet-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  /* Fixed: the column widths are decided from the content once, so they do not jump while rows
+     are swapped under the scroll. */
+  table-layout: fixed;
+}
+
+.sheet-table th,
+.sheet-table td {
+  height: 30px;
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The two rows that hold the height of everything outside the window. */
+.sheet-gap td,
+.sheet-gap {
+  padding: 0;
+  border: 0;
+}
+
+.sheet-no-col {
+  width: 54px;
+}
+
+.sheet-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* The row a search hit is on. */
+.sheet-table tr.search-target td {
+  background: var(--accent-bg);
+}
+
+.sheet-table tr.search-target .sheet-no {
+  color: var(--accent);
+}
+
+/* A sheet of a workbook: the lettered row is a ruler like the numbers, not a header of its own. */
+.sheet-table--grid thead th {
+  color: var(--text-dim);
+  font-weight: 400;
+  text-align: center;
+  user-select: none;
+}
+
+/* The row number is a ruler, not data: it stays put and does not get selected with the cells. */
+.sheet-no {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  text-align: right;
+  user-select: none;
+}
+
+.sheet-table thead .sheet-no {
+  z-index: 3;
+}
+
+.sheet-note {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+@media print {
+  /* On paper the table is not scrolled, it is simply as long as it is, and the header repeats. */
+  .sheet-scroll {
+    max-height: none;
+    overflow: visible;
+    border-color: #d0d7de;
+  }
+
+  .sheet-tabs,
+  .sheet-note {
+    display: none;
+  }
+
+  .sheet-table thead {
+    display: table-header-group;
+  }
+
+  .sheet-table tr {
+    break-inside: avoid;
+  }
+}

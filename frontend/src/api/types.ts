@@ -22,12 +22,28 @@ export interface DocMeta {
   updated_at?: string;
 }
 
+export interface SheetData {
+  name: string;
+  rows: string[][];
+  /** Rows or columns were left out by the server limits. */
+  truncated: boolean;
+}
+
+export interface Workbook {
+  sheets: SheetData[];
+  /** Sheets were left out by the server limit. */
+  truncated: boolean;
+  /** The first row is a header. A workbook is shown as a grid instead, with lettered columns. */
+  header: boolean;
+}
+
 export type Render =
   | { kind: 'html'; body: string }
   | { kind: 'text'; body: string }
   | { kind: 'frame' }
   | { kind: 'pdf' }
   | { kind: 'image' }
+  | { kind: 'sheet'; body: Workbook }
   | { kind: 'binary' };
 
 export interface DocResponse {
@@ -37,6 +53,8 @@ export interface DocResponse {
   highlighted?: string | null;
   /** Opened from a search hit: the page scrolls to the marked match. */
   jump?: boolean;
+  /** Where the hit is in a table, when the document is one. */
+  sheetTarget?: { sheet: number; row: number };
 }
 
 /** Archive state, shared by every user. */
@@ -52,6 +70,8 @@ export interface BuildInfo {
   error: string | null;
   /** The server accepts regular expressions in search. */
   search_regex: boolean;
+  /** The organization's OAuth client for export to Google Drive; null turns the export off. */
+  google_client_id: string | null;
 }
 
 export interface RefreshResponse {

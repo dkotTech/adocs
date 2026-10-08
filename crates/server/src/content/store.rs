@@ -8,7 +8,7 @@ use serde::Serialize;
 use super::cache::{INCOMING, Stat, TempPath, clean_cache, copy_hashing, stat_of};
 use super::index::Index;
 use super::unpack::build_version;
-use crate::config::Config;
+use crate::config::{Config, SheetLimits};
 
 /// State shared by every user: what is loaded and when.
 #[derive(Serialize, Clone, Default)]
@@ -44,6 +44,7 @@ pub struct Store {
     source: PathBuf,
     cache_dir: PathBuf,
     max_bytes: u64,
+    sheets: SheetLimits,
     current: RwLock<Arc<Index>>,
     status: RwLock<Status>,
     last_stat: Mutex<Option<Stat>>,
@@ -64,6 +65,7 @@ impl Store {
             source: cfg.data_dir.join(&cfg.archive),
             cache_dir: cfg.cache_dir.clone(),
             max_bytes: cfg.max_total_bytes,
+            sheets: cfg.sheets.clone(),
             current: RwLock::new(Arc::new(Index::empty())),
             status: RwLock::new(Status {
                 archive: cfg.archive.clone(),
@@ -156,6 +158,7 @@ impl Store {
             &self.cache_dir,
             &hash,
             self.max_bytes,
+            &self.sheets,
         )?);
         Ok(Check::New { index, hash, stat })
     }

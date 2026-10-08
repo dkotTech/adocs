@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { rawUrl } from '../api/docs';
-import type { DocMeta } from '../api/types';
+import type { DocMeta, Render } from '../api/types';
 import { build, currentPath, dirOf, doc, docError, docLoading, docUrl, formatDate, formatSize, openDoc, resolveRelative } from '../store';
+import { driveName, googleTypeFor, GOOGLE_DOC, loadGoogle, uploadToDrive } from '../gdrive';
+import { archiveHtml, documentHtml, isRelative } from '../snapshot';
 import { CodeView } from './CodeView';
-import { Download, ExternalLink, Printer } from './Icons';
-
-function isRelative(href: string): boolean {
-  return !/^([a-z]+:|\/|#)/i.test(href);
-}
+import { DriveDialog, type DriveState } from './DriveDialog';
+import { SheetView } from './SheetView';
+import { Download, ExternalLink, Printer, Upload } from './Icons';
 
 /** Rewrites relative links and images inside rendered markdown. Code blocks are already highlighted. */
 function MarkdownBody({ html, path, title }: { html: string; path: string; title: string }) {
@@ -106,9 +106,50 @@ async function exportHtmlPdf(meta: DocMeta) {
   document.body.append(frame);
 }
 
-function DocHeader({ meta, kind }: { meta: DocMeta; kind: string }) {
+/** What the document turns into in Drive. A rendered document and an HTML one from the archive
+ *  travel as the page we show, a table becomes a Google table, the rest stay the file itself. */
+function driveTarget(meta: DocMeta, render: Render): { name: string; targetType?: string } {
+  if (render.kind === 'html' || render.kind === 'frame') {
+    return { name: driveName(meta.path, true), targetType: GOOGLE_DOC };
+  }
+  const targetType = googleTypeFor(meta.content_type);
+  return { name: driveName(meta.path, !!targetType), targetType };
+}
+
+/** Sends the document to the employee's own Drive, straight from the browser, so it is created
+ *  under their account and not the service's. */
+async function exportToDrive(clientId: string, meta: DocMeta, render: Render): Promise<string> {
+  const { name, targetType } = driveTarget(meta, render);
+
+  if (render.kind === 'html' || render.kind === 'frame') {
+    const html =
+      render.kind === 'html'
+        ? await documentHtml(meta.path, meta.title, render.body)
+        : await archiveHtml(meta.path);
+    return uploadToDrive(clientId, {
+      name,
+      body: new Blob([html], { type: 'text/html' }),
+      sourceType: 'text/html',
+      targetType,
+    });
+  }
+
+  const res = await fetch(rawUrl(meta.path));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return uploadToDrive(clientId, { name, body: await res.blob(), sourceType: meta.content_type, targetType });
+}
+
+function DocHeader({ meta, render }: { meta: DocMeta; render: Render }) {
+  const kind = render.kind;
   const [busy, setBusy] = useState(false);
-  const printable = kind === 'html' || kind === 'text' || kind === 'frame';
+  const [drive, setDrive] = useState<DriveState | null>(null);
+  const printable = kind === 'html' || kind === 'text' || kind === 'frame' || kind === 'sheet';
+  const clientId = build.value?.google_client_id ?? null;
+
+  // The script is loaded in advance: the sign-in window must open on the click itself
+  useEffect(() => {
+    if (clientId) loadGoogle().catch((e) => console.error('Google sign-in', e));
+  }, [clientId]);
 
   function onPdf() {
     if (kind !== 'frame') return printDoc(meta.title, true);
@@ -116,6 +157,14 @@ function DocHeader({ meta, kind }: { meta: DocMeta; kind: string }) {
     exportHtmlPdf(meta)
       .catch((e) => console.error('PDF export failed', e))
       .finally(() => setBusy(false));
+  }
+
+  function onDrive() {
+    if (!clientId) return;
+    setDrive({ busy: true });
+    exportToDrive(clientId, meta, render)
+      .then((link) => setDrive({ busy: false, link }))
+      .catch((e: Error) => setDrive({ busy: false, error: e.message }));
   }
 
   return (
@@ -139,7 +188,15 @@ function DocHeader({ meta, kind }: { meta: DocMeta; kind: string }) {
             <Printer size={13} /> Print
           </button>
         )}
+        {clientId && (
+          <button type="button" class="pill pill-link" title="Save to my Google Drive" disabled={drive?.busy} onClick={onDrive}>
+            <Upload size={13} /> Drive
+          </button>
+        )}
       </div>
+      {drive && (
+        <DriveDialog name={driveTarget(meta, render).name} state={drive} onClose={() => setDrive(null)} onRetry={onDrive} />
+      )}
     </header>
   );
 }
@@ -223,6 +280,9 @@ export function DocViewer() {
     case 'image':
       body = <img class="doc-image" src={raw} alt={d.meta.title} />;
       break;
+    case 'sheet':
+      body = <SheetView book={d.render.body} target={d.sheetTarget} />;
+      break;
     default:
       body = (
         <p class="doc-status">
@@ -234,7 +294,7 @@ export function DocViewer() {
 
   return (
     <article class={`doc ${docLoading.value ? 'doc--stale' : ''}`} key={d.meta.path}>
-      <DocHeader meta={d.meta} kind={d.render.kind} />
+      <DocHeader meta={d.meta} render={d.render} />
       {body}
     </article>
   );

@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use super::unpack::RawEntry;
+use crate::config::SheetLimits;
 use crate::paths;
 use crate::render;
 use crate::tree::{self, TreeNode};
@@ -19,7 +20,7 @@ const HEAD_BYTES: u64 = 64 * 1024;
 pub struct DocMeta {
     pub path: String,
     pub title: String,
-    /// The first paragraph of a markdown file, for indexes.
+    /// For indexes: the first paragraph of a markdown file, or the shape of a table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
     pub content_type: String,
@@ -78,6 +79,11 @@ impl Index {
         Some(self.version.as_ref()?.path.join(path))
     }
 
+    /// The directory of the current version, where derived results are kept.
+    pub fn version_dir(&self) -> Option<&Path> {
+        Some(&self.version.as_ref()?.path)
+    }
+
     /// The whole document. Only for small files: large ones are streamed.
     pub fn read(&self, path: &str) -> Option<io::Result<Vec<u8>>> {
         Some(fs::read(self.file_path(path)?))
@@ -118,7 +124,7 @@ fn markdown_head(path: &Path) -> Option<String> {
     String::from_utf8(buf).ok()
 }
 
-pub(super) fn assemble(mut entries: Vec<RawEntry>, dir: PathBuf) -> Index {
+pub(super) fn assemble(mut entries: Vec<RawEntry>, dir: PathBuf, sheets: &SheetLimits) -> Index {
     entries.sort_by(|a, b| a.path.cmp(&b.path));
 
     let mut docs = Vec::with_capacity(entries.len());
@@ -137,7 +143,15 @@ pub(super) fn assemble(mut entries: Vec<RawEntry>, dir: PathBuf) -> Index {
             .as_deref()
             .and_then(render::markdown_title)
             .unwrap_or_else(|| paths::display_name(&path));
-        let summary = head.as_deref().and_then(render::markdown_summary);
+        // A table is parsed once here and kept in the derived store, so the viewer, the indexes
+        // and MCP all read the same prepared rows and nobody parses it again on a request.
+        let summary = if crate::sheet::is_sheet(&path) {
+            crate::sheet::workbook_at(&dir, &path, len as i64, sheets)
+                .as_ref()
+                .and_then(|book| crate::sheet::summary(book, sheets))
+        } else {
+            head.as_deref().and_then(render::markdown_summary)
+        };
 
         docs.push(DocMeta {
             path,

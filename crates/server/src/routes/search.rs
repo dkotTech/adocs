@@ -60,7 +60,7 @@ pub async fn search(
         return Ok(HttpResponse::Ok().content_type(content_type).finish());
     }
 
-    let results = search::search(store.current(), params)
+    let results = search::search(store.current(), params, cfg.sheets.clone())
         .await
         .map_err(|e| match e {
             Failure::Busy => AppError::TooManyRequests,

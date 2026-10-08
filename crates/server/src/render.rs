@@ -20,6 +20,8 @@ pub enum Render {
     Pdf,
     /// An image.
     Image,
+    /// A spreadsheet read into rows.
+    Sheet(crate::sheet::Workbook),
     /// Everything else, download only.
     Binary,
 }
