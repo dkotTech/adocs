@@ -2,6 +2,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
 use serde::Serialize;
 
 use crate::content::DocMeta;
+use crate::paths;
 
 /// Above this size text is not inlined, only served through /raw.
 const MAX_INLINE: usize = 2 * 1024 * 1024;
@@ -20,8 +21,9 @@ pub enum Render {
     Pdf,
     /// An image.
     Image,
-    /// A spreadsheet read into rows.
-    Sheet(crate::sheet::Workbook),
+    /// A spreadsheet read into rows: the prepared `sheet::Workbook` as stored, sent without being
+    /// parsed again.
+    Sheet(Box<serde_json::value::RawValue>),
     /// Everything else, download only.
     Binary,
 }
@@ -196,11 +198,7 @@ pub fn detect_content_type(path: &str) -> String {
     if is_markdown("", path) {
         return "text/markdown".to_string();
     }
-    let ext = path
-        .rsplit('/')
-        .next()
-        .and_then(|name| name.rsplit_once('.'))
-        .map(|(_, ext)| ext.to_ascii_lowercase());
+    let ext = paths::extension(path);
     if let Some((_, ct)) = ext
         .as_deref()
         .and_then(|ext| SOURCE_TYPES.iter().find(|(e, _)| *e == ext))

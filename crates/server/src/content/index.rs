@@ -6,10 +6,12 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+use super::derived;
 use super::unpack::RawEntry;
 use crate::config::SheetLimits;
 use crate::paths;
 use crate::render;
+use crate::sheet;
 use crate::tree::{self, TreeNode};
 
 /// Only the start of a markdown file is read for its title and summary, so indexing does not
@@ -28,6 +30,9 @@ pub struct DocMeta {
     /// The ETag header value, already quoted.
     pub etag: String,
     pub updated_at: Option<DateTime<Utc>>,
+    /// A table parsed while the index was built, and where its prepared forms lie.
+    #[serde(skip)]
+    pub table: Option<sheet::Prepared>,
 }
 
 /// The current documentation version: the in-memory index and the extracted files in the cache directory.
@@ -79,9 +84,18 @@ impl Index {
         Some(self.version.as_ref()?.path.join(path))
     }
 
-    /// The directory of the current version, where derived results are kept.
-    pub fn version_dir(&self) -> Option<&Path> {
-        Some(&self.version.as_ref()?.path)
+    /// Where a value derived from a document of this version lies (`content::derived`).
+    pub fn derived_path(&self, key: &str) -> Option<PathBuf> {
+        Some(derived::path(&self.version.as_ref()?.path, key))
+    }
+
+    /// The file search and MCP read for a document: the prepared lines of a table, otherwise the
+    /// document itself.
+    pub fn text_path(&self, doc: &DocMeta) -> Option<PathBuf> {
+        match &doc.table {
+            Some(table) => self.derived_path(&table.text),
+            None => self.file_path(&doc.path),
+        }
     }
 
     /// The whole document. Only for small files: large ones are streamed.
@@ -143,14 +157,12 @@ pub(super) fn assemble(mut entries: Vec<RawEntry>, dir: PathBuf, sheets: &SheetL
             .as_deref()
             .and_then(render::markdown_title)
             .unwrap_or_else(|| paths::display_name(&path));
-        // A table is parsed once here and kept in the derived store, so the viewer, the indexes
-        // and MCP all read the same prepared rows and nobody parses it again on a request.
-        let summary = if crate::sheet::is_sheet(&path) {
-            crate::sheet::workbook_at(&dir, &path, len as i64, sheets)
-                .as_ref()
-                .and_then(|book| crate::sheet::summary(book, sheets))
-        } else {
-            head.as_deref().and_then(render::markdown_summary)
+        let (table, summary) = match sheet::is_sheet(&path)
+            .then(|| sheet::prepare(&dir, &path, len as i64, sheets))
+            .flatten()
+        {
+            Some((table, summary)) => (Some(table), summary),
+            None => (None, head.as_deref().and_then(render::markdown_summary)),
         };
 
         docs.push(DocMeta {
@@ -161,6 +173,7 @@ pub(super) fn assemble(mut entries: Vec<RawEntry>, dir: PathBuf, sheets: &SheetL
             size: len as i64,
             etag,
             updated_at: mtime.and_then(|t| DateTime::from_timestamp(t, 0)),
+            table,
         });
     }
 

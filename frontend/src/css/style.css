@@ -649,7 +649,7 @@ input[type="password"] {
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
-  animation: search-fade var(--t-fast) var(--ease);
+  animation: dialog-fade var(--t-fast) var(--ease);
 }
 
 .search-dialog {
@@ -662,14 +662,14 @@ input[type="password"] {
   border: 1px solid var(--border-focus);
   border-radius: var(--radius);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
-  animation: search-dialog-in var(--t-med) var(--ease);
+  animation: dialog-in var(--t-med) var(--ease);
 }
 
-@keyframes search-fade {
+@keyframes dialog-fade {
   from { opacity: 0; }
 }
 
-@keyframes search-dialog-in {
+@keyframes dialog-in {
   from { opacity: 0; transform: translateY(-8px) scale(0.985); }
 }
 
@@ -846,7 +846,7 @@ mark.search-hit {
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
-  animation: drive-fade var(--t-fast) var(--ease);
+  animation: dialog-fade var(--t-fast) var(--ease);
 }
 
 .drive-dialog {
@@ -857,15 +857,7 @@ mark.search-hit {
   border: 1px solid var(--border-focus);
   border-radius: var(--radius);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
-  animation: drive-in var(--t-med) var(--ease);
-}
-
-@keyframes drive-fade {
-  from { opacity: 0; }
-}
-
-@keyframes drive-in {
-  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+  animation: dialog-in var(--t-med) var(--ease);
 }
 
 .drive-dialog h2 {
@@ -893,14 +885,6 @@ mark.search-hit {
 .drive-icon--error {
   background: var(--danger-bg);
   color: var(--danger);
-}
-
-.drive-spin {
-  animation: drive-spin 1.1s linear infinite;
-}
-
-@keyframes drive-spin {
-  to { transform: rotate(360deg); }
 }
 
 .drive-file {

@@ -7,7 +7,6 @@ use crate::content::{DocMeta, Outcome, Status, Store};
 use crate::errors::AppError;
 use crate::paths;
 use crate::render::{self, Render};
-use crate::sheet;
 
 // GET /api/tree - the directory tree of the current version
 pub async fn tree(store: web::Data<Store>) -> HttpResponse {
@@ -70,7 +69,6 @@ pub struct DocResponse {
 
 // GET /api/docs/{path} - metadata and content prepared for display
 pub async fn get(
-    cfg: web::Data<Config>,
     store: web::Data<Store>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
@@ -78,19 +76,23 @@ pub async fn get(
     let index = store.current();
     let meta = index.get(&path).cloned().ok_or(AppError::NotFound)?;
 
-    // A table is parsed outside the runtime: the whole book is read and that is not quick. One
-    // that cannot be read falls through to the usual rendering, where a csv is still plain text.
-    if sheet::is_sheet(&meta.path) {
-        let worker = (index.clone(), meta.clone(), cfg.sheets.clone());
-        let book = web::block(move || sheet::workbook(&worker.0, &worker.1, &worker.2))
+    // A table was parsed when the index was built; its rows are sent as they were stored. One
+    // that could not be read has none and takes the usual rendering, where a csv is plain text.
+    if let Some(file) = meta
+        .table
+        .as_ref()
+        .and_then(|t| index.derived_path(&t.book))
+    {
+        let book = web::block(move || std::fs::read_to_string(file))
             .await
+            .map_err(|_| AppError::Internal)?
             .map_err(|_| AppError::Internal)?;
-        if let Some(book) = book {
-            return Ok(HttpResponse::Ok().json(DocResponse {
-                render: Render::Sheet(book),
-                meta,
-            }));
-        }
+        let book =
+            serde_json::value::RawValue::from_string(book).map_err(|_| AppError::Internal)?;
+        return Ok(HttpResponse::Ok().json(DocResponse {
+            render: Render::Sheet(book),
+            meta,
+        }));
     }
 
     let data = if render::needs_data(&meta) {

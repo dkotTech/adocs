@@ -22,28 +22,25 @@ pub fn key(kind: &str, value: &str) -> String {
     hex(&digest)[..KEY_LEN].to_string()
 }
 
-/// Where a value lies. Public because a value can be large enough that it is better searched on
-/// disk than read into memory.
+/// Where a value lies. Values are read from disk where they lie, by the index that knows their keys,
+/// rather than loaded into memory whole.
 pub fn path(version: &Path, key: &str) -> PathBuf {
     version.join(DIR).join(key)
 }
 
-pub fn get(version: &Path, key: &str) -> Option<Vec<u8>> {
-    fs::read(path(version, key)).ok()
-}
-
 /// Written through a temporary file and a rename: a reader never sees a half-written value.
-/// A failure only means the work is done again next time, so errors are not worth reporting.
-pub fn put(version: &Path, key: &str, value: &[u8]) {
+/// Returns whether the value was written; a value that was not is simply not there to use.
+pub fn put(version: &Path, key: &str, value: &[u8]) -> bool {
     let path = path(version, key);
     let Some(dir) = path.parent() else {
-        return;
+        return false;
     };
-    if fs::create_dir_all(dir).is_err() {
-        return;
-    }
     let tmp = path.with_extension("tmp");
-    if fs::write(&tmp, value).is_ok() && fs::rename(&tmp, &path).is_err() {
+    let written = fs::create_dir_all(dir).is_ok()
+        && fs::write(&tmp, value).is_ok()
+        && fs::rename(&tmp, &path).is_ok();
+    if !written {
         let _ = fs::remove_file(&tmp);
     }
+    written
 }

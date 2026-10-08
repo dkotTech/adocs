@@ -59,6 +59,13 @@ pub fn file_stem(path: &str) -> &str {
     }
 }
 
+/// The extension of the file name, lowercased.
+pub fn extension(path: &str) -> Option<String> {
+    let name = path.rsplit('/').next()?;
+    let (_, ext) = name.rsplit_once('.')?;
+    Some(ext.to_ascii_lowercase())
+}
+
 /// Default title: the file name without its extension and without a numeric prefix.
 /// `01-intro.md` is shown as `intro` but sorted by the original name,
 /// so the section order is set straight from the repository.

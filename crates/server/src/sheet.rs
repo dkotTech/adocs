@@ -6,13 +6,14 @@
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use calamine::{Data, DataType, Reader, open_workbook_auto};
 use serde::{Deserialize, Serialize};
 
 use crate::config::SheetLimits;
-use crate::content::{DocMeta, Index, derived};
+use crate::content::derived;
+use crate::paths;
 
 #[derive(Serialize, Deserialize)]
 pub struct Sheet {
@@ -38,22 +39,20 @@ const WORKBOOK: &[&str] = &["xlsx", "xlsm", "xlam", "xla", "xls", "xlsb", "ods"]
 /// Tables that are plain text. They are read here as well, so that one table looks like any other.
 const DELIMITED: &[&str] = &["csv", "tsv", "tab"];
 
-fn extension(path: &str) -> Option<String> {
-    let name = path.rsplit('/').next()?;
-    let (_, ext) = name.rsplit_once('.')?;
-    Some(ext.to_ascii_lowercase())
-}
+/// Column names listed in the one-line summary for llms.txt.
+const SUMMARY_COLUMNS: usize = 24;
 
 pub fn is_sheet(path: &str) -> bool {
-    extension(path)
+    paths::extension(path)
         .is_some_and(|e| WORKBOOK.contains(&e.as_str()) || DELIMITED.contains(&e.as_str()))
 }
 
-fn cut(text: &str, limit: usize) -> String {
-    match text.char_indices().nth(limit) {
-        Some((end, _)) => format!("{}…", &text[..end]),
-        None => text.to_string(),
+fn cut(mut text: String, limit: usize) -> String {
+    if let Some((end, _)) = text.char_indices().nth(limit) {
+        text.truncate(end);
+        text.push('…');
     }
+    text
 }
 
 /// A whole number is shown without a fractional part: a count must not read as `128400.0`.
@@ -68,11 +67,11 @@ fn number(value: f64) -> String {
 fn cell(data: &Data, limit: usize) -> String {
     match data {
         Data::Empty => String::new(),
-        Data::String(text) => cut(text, limit),
+        Data::String(text) => cut(text.clone(), limit),
         Data::Int(value) => value.to_string(),
         Data::Float(value) => number(*value),
         Data::Bool(value) => value.to_string(),
-        Data::DurationIso(text) => cut(text, limit),
+        Data::DurationIso(text) => cut(text.clone(), limit),
         Data::Error(err) => format!("#{err:?}"),
         Data::DateTime(_) | Data::DateTimeIso(_) => match data.as_datetime() {
             // A date without a time of day is a date, which is how it was written in the cell
@@ -114,11 +113,14 @@ fn separator(text: &str, ext: &str) -> char {
 /// the whole file into memory.
 fn read_record(reader: &mut impl BufRead, buf: &mut Vec<u8>, budget: usize) -> io::Result<bool> {
     buf.clear();
+    let mut quotes = 0;
     loop {
+        let start = buf.len();
         if reader.read_until(b'\n', buf)? == 0 {
             return Ok(!buf.is_empty());
         }
-        if buf.iter().filter(|&&b| b == b'"').count() % 2 == 0 || buf.len() >= budget {
+        quotes += buf[start..].iter().filter(|&&b| b == b'"').count();
+        if quotes % 2 == 0 || buf.len() >= budget {
             return Ok(true);
         }
     }
@@ -134,11 +136,11 @@ fn cells_of(text: &str, sep: char, limits: &SheetLimits, wide: &mut bool) -> Vec
 
     let mut finish = |row: &mut Vec<String>, value: &mut String| {
         if row.len() < limits.max_cols {
-            row.push(cut(value, limits.max_cell_chars));
+            row.push(cut(std::mem::take(value), limits.max_cell_chars));
         } else {
             *wide = true;
+            value.clear();
         }
-        value.clear();
     };
 
     while let Some(c) = chars.next() {
@@ -247,49 +249,9 @@ fn read(path: &Path, limits: &SheetLimits) -> Result<Workbook, String> {
     })
 }
 
-const TEXT: &str = "sheet-text";
-
-/// The key of a value derived from a table. The limits shape the result, so they belong in the
-/// key: after they change, rows cut by the previous settings must not be served.
-fn cache_key(kind: &str, path: &str, limits: &SheetLimits) -> String {
-    derived::key(kind, &format!("{path}\0{}", fingerprint(limits)))
-}
-
-/// The limits as one line, for the cache key.
-fn fingerprint(limits: &SheetLimits) -> String {
-    format!(
-        "{}:{}:{}:{}:{}:{}",
-        limits.max_bytes,
-        limits.max_rows,
-        limits.max_cols,
-        limits.max_cells,
-        limits.max_sheets,
-        limits.max_cell_chars,
-    )
-}
-
-/// The table as text: one line per row with cells separated by tabs, a note before each sheet.
-/// This is what an agent reads through MCP, and the same shape a search over tables would use.
-pub fn to_lines(book: &Workbook) -> Vec<String> {
-    let mut lines = Vec::new();
-    for sheet in &book.sheets {
-        if !sheet.name.is_empty() {
-            lines.push(format!("# sheet: {}", sheet.name));
-        }
-        lines.extend(sheet.rows.iter().map(|row| row.join("\t")));
-        if sheet.truncated {
-            lines.push("# the sheet is shown in part".to_string());
-        }
-    }
-    if book.truncated {
-        lines.push("# some sheets were left out".to_string());
-    }
-    lines
-}
-
 /// One line about the table for llms.txt and the other indexes: its size and what its columns are
 /// called. Without it a table is just a name and a content type, which tells an agent nothing.
-pub fn summary(book: &Workbook, limits: &SheetLimits) -> Option<String> {
+fn summary(book: &Workbook) -> Option<String> {
     let first = book.sheets.first()?;
     let mut out = match book.sheets.len() {
         1 => format!("a table of {} rows", first.rows.len()),
@@ -305,7 +267,7 @@ pub fn summary(book: &Workbook, limits: &SheetLimits) -> Option<String> {
         .iter()
         .filter(|cell| !cell.is_empty())
         .map(String::as_str)
-        .take(limits.summary_columns)
+        .take(SUMMARY_COLUMNS)
         .collect();
     if !columns.is_empty() {
         let label = if book.header { "columns" } else { "first row" };
@@ -314,28 +276,59 @@ pub fn summary(book: &Workbook, limits: &SheetLimits) -> Option<String> {
     Some(out)
 }
 
-/// The parsed book from a version directory: taken from the derived cache when it is already
-/// there, otherwise parsed once and put there. `None` means the file is too large or the reader
-/// could not make sense of it, and the document stays a download.
-pub fn workbook_at(
+/// Where the prepared forms of a table lie in the derived store of its version.
+#[derive(Clone, Debug)]
+pub struct Prepared {
+    /// The `Workbook` as JSON, sent to the viewer as it is.
+    pub book: String,
+    /// The rows as lines (`to_text`): what search greps and what MCP reads.
+    pub text: String,
+}
+
+/// The key of a value derived from a table. The limits shape the result, so they belong in the
+/// key: after they change, rows cut by the previous settings must not be served.
+fn cache_key(kind: &str, path: &str, l: &SheetLimits) -> String {
+    let limits = format!(
+        "{}:{}:{}:{}:{}:{}",
+        l.max_bytes, l.max_rows, l.max_cols, l.max_cells, l.max_sheets, l.max_cell_chars,
+    );
+    derived::key(kind, &format!("{path}\0{limits}"))
+}
+
+/// The table as text: one line per row with cells separated by tabs, a note before each sheet.
+/// `SheetView.tsx::sheetTarget` maps a line back to a row by the same layout.
+fn to_text(book: &Workbook) -> String {
+    let mut lines = Vec::new();
+    for sheet in &book.sheets {
+        if !sheet.name.is_empty() {
+            lines.push(format!("# sheet: {}", sheet.name));
+        }
+        lines.extend(sheet.rows.iter().map(|row| row.join("\t")));
+        if sheet.truncated {
+            lines.push("# the sheet is shown in part".to_string());
+        }
+    }
+    if book.truncated {
+        lines.push("# some sheets were left out".to_string());
+    }
+    lines.join("\n")
+}
+
+/// Parses a table of a new version once and writes its prepared forms beside it, so the viewer,
+/// search and MCP read them from disk and nobody parses the table on a request. Returns where they
+/// lie and the one-line summary. `None` means the file is too large or the reader could not make
+/// sense of it, and the document is served like any other file.
+pub fn prepare(
     version: &Path,
     path: &str,
     size: i64,
     limits: &SheetLimits,
-) -> Option<Workbook> {
+) -> Option<(Prepared, Option<String>)> {
     if size > limits.max_bytes {
         return None;
     }
     let file = version.join(path);
-    let key = cache_key("sheet", path, limits);
-
-    if let Some(cached) = derived::get(version, &key)
-        && let Ok(book) = serde_json::from_slice(&cached)
-    {
-        return Some(book);
-    }
-
-    let ext = extension(path).unwrap_or_default();
+    let ext = paths::extension(path).unwrap_or_default();
     let book = if DELIMITED.contains(&ext.as_str()) {
         read_delimited(&file, &ext, limits)
     } else {
@@ -343,26 +336,12 @@ pub fn workbook_at(
     }
     .inspect_err(|e| tracing::warn!("failed to read the table {path}: {e}"))
     .ok()?;
-    if let Ok(bytes) = serde_json::to_vec(&book) {
-        derived::put(version, &key, &bytes);
-    }
-    // The same rows as text, for the search engine: it reads files from disk, and a table is not
-    // one until it is written as lines.
-    derived::put(
-        version,
-        &cache_key(TEXT, path, limits),
-        to_lines(&book).join("\n").as_bytes(),
-    );
-    Some(book)
-}
 
-/// The file the search engine reads instead of the table itself. `None` when the table was never
-/// parsed, which is also when there is nothing to search.
-pub fn text_path(version: &Path, path: &str, limits: &SheetLimits) -> Option<PathBuf> {
-    let file = derived::path(version, &cache_key(TEXT, path, limits));
-    file.is_file().then_some(file)
-}
-
-pub fn workbook(index: &Index, meta: &DocMeta, limits: &SheetLimits) -> Option<Workbook> {
-    workbook_at(index.version_dir()?, &meta.path, meta.size, limits)
+    let prepared = Prepared {
+        book: cache_key("sheet", path, limits),
+        text: cache_key("sheet-text", path, limits),
+    };
+    let written = derived::put(version, &prepared.book, &serde_json::to_vec(&book).ok()?)
+        && derived::put(version, &prepared.text, to_text(&book).as_bytes());
+    written.then(|| (prepared, summary(&book)))
 }

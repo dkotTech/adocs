@@ -753,7 +753,6 @@ mark.search-target {
 }
 
 /* The two rows that hold the height of everything outside the window. */
-.sheet-gap td,
 .sheet-gap {
   padding: 0;
   border: 0;

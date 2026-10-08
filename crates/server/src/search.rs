@@ -14,11 +14,9 @@ use grep_searcher::{
 use serde::Serialize;
 use tokio::sync::Semaphore;
 
-use crate::config::SheetLimits;
 use crate::content::{DocMeta, Index};
 use crate::paths;
 use crate::render;
-use crate::sheet;
 
 /// A search stops after this long and returns what it has found so far.
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -139,17 +137,13 @@ pub enum Failure {
 
 /// Waits for a slot and runs the search on a blocking thread. The search holds its own version
 /// of the index, so a refresh in the middle does not remove its files.
-pub async fn search(
-    index: Arc<Index>,
-    params: Params,
-    sheets: SheetLimits,
-) -> Result<Results, Failure> {
+pub async fn search(index: Arc<Index>, params: Params) -> Result<Results, Failure> {
     let Ok(Ok(permit)) = tokio::time::timeout(SLOT_WAIT, SLOTS.acquire()).await else {
         return Err(Failure::Busy);
     };
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        run(&index, &params, &sheets)
+        run(&index, &params)
     })
     .await
     .map_err(|_| Failure::Internal)?
@@ -158,10 +152,10 @@ pub async fn search(
 
 /// Text files only: markdown and text types, without `application/octet-stream` (files of an
 /// unknown type) and without images. A file that still turns out binary is skipped by the NUL check.
-/// A table counts too: it is searched through the text form prepared beside its version.
+/// A parsed table counts too: it is searched through its prepared lines (`Index::text_path`).
 pub fn is_searchable(doc: &DocMeta) -> bool {
     let ct = doc.content_type.as_str();
-    sheet::is_sheet(&doc.path)
+    doc.table.is_some()
         || ((render::is_markdown(ct, &doc.path) || render::is_text(ct))
             && !ct.starts_with("application/octet-stream")
             && !ct.starts_with("image/"))
@@ -207,7 +201,7 @@ pub struct Line {
 
 /// Runs a search. Blocking: async code goes through `search`.
 /// Only files from the index are read, so the search sees exactly what the tree shows.
-pub fn run(index: &Index, p: &Params, sheets: &SheetLimits) -> Result<Results, String> {
+pub fn run(index: &Index, p: &Params) -> Result<Results, String> {
     let started = Instant::now();
     let deadline = started + TIMEOUT;
 
@@ -252,14 +246,7 @@ pub fn run(index: &Index, p: &Params, sheets: &SheetLimits) -> Result<Results, S
             results.truncated = true;
             break;
         }
-        // A table is searched through its prepared lines, the same ones MCP reads it as. A table
-        // too large to have been parsed has none, and a delimited one is then searched as the text
-        // file it already is; a workbook has nothing to search and is skipped by the NUL check.
-        let prepared = sheet::is_sheet(&doc.path)
-            .then(|| index.version_dir())
-            .flatten()
-            .and_then(|dir| sheet::text_path(dir, &doc.path, sheets));
-        let Some(file) = prepared.or_else(|| index.file_path(&doc.path)) else {
+        let Some(file) = index.text_path(doc) else {
             continue;
         };
 

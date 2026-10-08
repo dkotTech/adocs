@@ -37,6 +37,13 @@ export interface Workbook {
   header: boolean;
 }
 
+/** Where a search hit is in a table. */
+export interface SheetTarget {
+  sheet: number;
+  /** Index in `rows` of that sheet, counting the header row of a delimited file. */
+  row: number;
+}
+
 export type Render =
   | { kind: 'html'; body: string }
   | { kind: 'text'; body: string }
@@ -54,7 +61,7 @@ export interface DocResponse {
   /** Opened from a search hit: the page scrolls to the marked match. */
   jump?: boolean;
   /** Where the hit is in a table, when the document is one. */
-  sheetTarget?: { sheet: number; row: number };
+  sheetTarget?: SheetTarget;
 }
 
 /** Archive state, shared by every user. */

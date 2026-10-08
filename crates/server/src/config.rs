@@ -15,8 +15,6 @@ pub struct SheetLimits {
     pub max_sheets: usize,
     /// A longer cell is cut: the view is for looking at a table, not for reading an essay.
     pub max_cell_chars: usize,
-    /// Column names listed in the one-line summary for llms.txt.
-    pub summary_columns: usize,
 }
 
 #[derive(Clone)]
@@ -114,7 +112,6 @@ impl Config {
             max_cells: env_num("ADOCS_SHEET_MAX_CELLS", 200_000)?,
             max_sheets: env_num("ADOCS_SHEET_MAX_SHEETS", 64)?,
             max_cell_chars: env_num("ADOCS_SHEET_MAX_CELL_CHARS", 2_000)?,
-            summary_columns: env_num("ADOCS_SHEET_SUMMARY_COLUMNS", 24)?,
         };
 
         let cache_dir = std::env::var("ADOCS_CACHE_DIR")

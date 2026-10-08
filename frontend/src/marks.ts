@@ -3,6 +3,8 @@
  * so the marks appear together with the document. DOMParser runs no scripts.
  */
 
+import type { SheetTarget, Workbook } from './api/types';
+
 /** Where a search hit points: the line in the source file and the match rules of the query. */
 export interface SearchTarget {
   line: number;
@@ -20,8 +22,8 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /**
@@ -98,4 +100,21 @@ export function markText(html: string, t: SearchTarget): string {
   if (!marks.length) return html;
   marks[Math.min(t.occurrence, marks.length - 1)].classList.add('search-target');
   return doc.body.innerHTML;
+}
+
+/** Which row of which sheet a line of a table's text form points at. This mirrors
+ *  `sheet::to_text` on the server: a named sheet writes its name first, and a sheet that was cut
+ *  writes a note after its rows. The two must be changed together. */
+export function sheetTarget(book: Workbook, line: number): SheetTarget | undefined {
+  let seen = 0;
+  for (let s = 0; s < book.sheets.length; s++) {
+    const sheet = book.sheets[s]!;
+    if (sheet.name) {
+      seen += 1;
+      if (line === seen) return { sheet: s, row: 0 };
+    }
+    if (line <= seen + sheet.rows.length) return { sheet: s, row: line - seen - 1 };
+    seen += sheet.rows.length + (sheet.truncated ? 1 : 0);
+  }
+  return undefined;
 }

@@ -17,7 +17,6 @@ use crate::config::Config;
 use crate::content::Store;
 use crate::paths;
 use crate::search::{self, Failure};
-use crate::sheet;
 
 /// Entries in one `list_docs` answer.
 const MAX_LIST: usize = 2000;
@@ -150,7 +149,10 @@ impl Docs {
             Ok(path) => path,
             Err(e) => return failed(e.to_string()),
         };
-        let (Some(meta), Some(file)) = (index.get(&path), index.file_path(&path)) else {
+        let Some((meta, file)) = index
+            .get(&path)
+            .and_then(|meta| Some((meta, index.text_path(meta)?)))
+        else {
             return failed(format!(
                 "{path} is not found; list_docs and search show the existing paths"
             ));
@@ -165,20 +167,8 @@ impl Docs {
             .unwrap_or(DEFAULT_READ_LINES)
             .clamp(1, MAX_READ_LINES);
 
-        // A table is not a text file, but the server has already read it into rows, so it is
-        // readable here as lines: a header note per sheet, then cells separated by tabs.
-        if sheet::is_sheet(&path) {
-            let (worker, meta, limits) = (index.clone(), meta.clone(), self.cfg.sheets.clone());
-            let book =
-                tokio::task::spawn_blocking(move || sheet::workbook(&worker, &meta, &limits))
-                    .await
-                    .map_err(|_| ErrorData::internal_error("read interrupted", None))?;
-            // A table that could not be read falls through: a csv is still readable as a file
-            if let Some(book) = book {
-                return text(numbered(&sheet::to_lines(&book), offset, limit));
-            }
-        }
-        // Types known to be binary (PDF, images) are refused before reading: their text form, such
+        // A parsed table is read as its prepared lines: a note per sheet, then cells separated by
+        // tabs. Types known to be binary (PDF, images) are refused before reading: their text form, such
         // as PDF objects, would cost tokens and look like content. SVG stays readable as markup, and a
         // file of unknown type (Dockerfile, LICENSE) is left to the NUL check.
         let ct = meta.content_type.as_str();
@@ -226,7 +216,7 @@ impl Docs {
             Ok(params) => params,
             Err(e) => return failed(e),
         };
-        match search::search(self.store.current(), params, self.cfg.sheets.clone()).await {
+        match search::search(self.store.current(), params).await {
             Ok(results) => text(search::to_text(&results)),
             Err(Failure::Busy) => failed("too many searches at once, try again in a moment"),
             Err(Failure::Invalid(msg)) => failed(msg),
@@ -250,38 +240,6 @@ impl ServerHandler for Docs {
 
 /// Lines `offset..offset + limit` of a text file, numbered like `cat -n`, with a note on where to
 /// continue. None for a binary file. Memory stays within the limits whatever the file size.
-/// Lines prepared in memory, numbered and closed off the way `read_lines` does for a file, so an
-/// agent paginates a table exactly as it paginates a document.
-fn numbered(lines: &[String], offset: u64, limit: usize) -> String {
-    let first = offset.saturating_sub(1) as usize;
-    let mut out = String::new();
-    let mut last = first;
-    for (i, line) in lines.iter().enumerate().skip(first) {
-        if i - first >= limit || out.len() >= MAX_READ_BYTES {
-            break;
-        }
-        let _ = writeln!(out, "{:>6}\t{line}", i + 1);
-        last = i + 1;
-    }
-    if last == first {
-        return match lines.len() {
-            0 => "[the table is empty]".to_string(),
-            n => format!("[the table has {n} lines; offset {offset} is past the end]"),
-        };
-    }
-    if last < lines.len() {
-        let _ = write!(
-            out,
-            "[lines {}-{last}; more follows, continue with offset={}]",
-            first + 1,
-            last + 1
-        );
-    } else {
-        let _ = write!(out, "[lines {}-{last}, end of table]", first + 1);
-    }
-    out
-}
-
 fn read_lines(file: &Path, offset: u64, limit: usize) -> io::Result<Option<String>> {
     let mut reader = BufReader::new(File::open(file)?);
     if reader

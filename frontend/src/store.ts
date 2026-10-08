@@ -3,8 +3,7 @@ import { ApiError } from './api/client';
 import { getBuild, getDoc, getTree, encodePath, postRefresh, searchDocs, type SearchParams } from './api/docs';
 import { highlight, highlightMarkdown, langForPath, preload } from './highlight';
 import type { BuildInfo, DocResponse, SearchFile, SearchHit, SearchResponse, TreeNode } from './api/types';
-import { sheetTarget } from './components/SheetView';
-import { markLine, markText, plainLines, type SearchTarget } from './marks';
+import { markLine, markText, plainLines, sheetTarget, type SearchTarget } from './marks';
 
 // The document tree (cached on the server, here the last loaded copy)
 export const tree = signal<TreeNode | null>(null);

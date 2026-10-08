@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { SheetData, Workbook } from '../api/types';
+import type { SheetData, SheetTarget, Workbook } from '../api/types';
 
 /** Height of one row. It is fixed on purpose: only a known height lets the view skip the rows that
  *  are off screen, and that is the whole difference between a table that scrolls and one that does
@@ -12,29 +12,6 @@ const MIN_WIDTH = 80;
 const MAX_WIDTH = 320;
 /** Rows looked at when guessing how wide a column has to be. */
 const WIDTH_SAMPLE = 200;
-
-export interface SheetTarget {
-  sheet: number;
-  /** Index in `rows` of that sheet, counting the header row of a delimited file. */
-  row: number;
-}
-
-/** Which row of which sheet a line of the table's text form points at. This mirrors
- *  `sheet::to_lines` on the server: a named sheet writes its name first, and a sheet that was cut
- *  writes a note after its rows. The two must be changed together. */
-export function sheetTarget(book: Workbook, line: number): SheetTarget | undefined {
-  let seen = 0;
-  for (let s = 0; s < book.sheets.length; s++) {
-    const sheet = book.sheets[s]!;
-    if (sheet.name) {
-      seen += 1;
-      if (line === seen) return { sheet: s, row: 0 };
-    }
-    if (line <= seen + sheet.rows.length) return { sheet: s, row: line - seen - 1 };
-    seen += sheet.rows.length + (sheet.truncated ? 1 : 0);
-  }
-  return undefined;
-}
 
 /** The spreadsheet name of a column: A, B ... Z, AA, AB. */
 function columnName(index: number): string {
@@ -58,12 +35,12 @@ function widthsOf(rows: string[][], count: number): number[] {
   return widths.map(Math.round);
 }
 
-function Rows({ rows, from, to, first, widths, hit }: {
+function Rows({ rows, from, to, first, columns, hit }: {
   rows: string[][];
   from: number;
   to: number;
   first: number;
-  widths: number[];
+  columns: number;
   hit: number;
 }) {
   const out = [];
@@ -72,7 +49,7 @@ function Rows({ rows, from, to, first, widths, hit }: {
     out.push(
       <tr key={r} class={r === hit ? 'search-target' : undefined}>
         <td class="sheet-no">{r + first}</td>
-        {widths.map((_, i) => (
+        {Array.from({ length: columns }, (_, i) => (
           <td key={i} title={(row[i]?.length ?? 0) > 24 ? row[i] : undefined}>{row[i] ?? ''}</td>
         ))}
       </tr>,
@@ -92,15 +69,31 @@ export function SheetView({ book, target }: { book: Workbook; target?: SheetTarg
   const box = useRef<HTMLDivElement>(null);
   const sheet: SheetData | undefined = book.sheets[active];
 
-  const { rows, head, firstNumber, widths } = useMemo(() => {
+  // A header row is drawn in the head and not counted among the rows
+  const skip = book.header ? 1 : 0;
+
+  // The head does not change with the scroll, so it is built once per sheet and not per frame
+  const { rows, widths, header } = useMemo(() => {
     const all = sheet?.rows ?? [];
-    const columns = all.reduce((max, row) => Math.max(max, row.length), 0);
-    return {
-      rows: book.header ? all.slice(1) : all,
-      head: book.header ? all[0] : null,
-      firstNumber: book.header ? 2 : 1,
-      widths: widthsOf(all, columns),
-    };
+    const head = book.header ? all[0] : null;
+    const widths = widthsOf(all, all.reduce((max, row) => Math.max(max, row.length), 0));
+    const header = (
+      <>
+        <colgroup>
+          <col class="sheet-no-col" />
+          {widths.map((w, i) => <col key={i} style={{ width: `${w}px` }} />)}
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="sheet-no" />
+            {widths.map((_, i) => (
+              <th key={i} title={head?.[i]}>{head ? (head[i] ?? '') : columnName(i)}</th>
+            ))}
+          </tr>
+        </thead>
+      </>
+    );
+    return { rows: all.slice(skip), widths, header };
   }, [sheet, book.header]);
 
   // A hit from the search points at a row of a sheet, which may not be the one on screen.
@@ -109,7 +102,7 @@ export function SheetView({ book, target }: { book: Workbook; target?: SheetTarg
   }, [target]);
 
   // The row the hit is on, in the numbering of the rows actually drawn.
-  const hit = target && target.sheet === active ? target.row - (book.header ? 1 : 0) : -1;
+  const hit = target && target.sheet === active ? target.row - skip : -1;
 
   // The window follows the scroll; it is also recomputed when the sheet or the size changes.
   useEffect(() => {
@@ -139,7 +132,7 @@ export function SheetView({ book, target }: { book: Workbook; target?: SheetTarg
   const below = (rows.length - end) * ROW_HEIGHT;
 
   return (
-    <div class="sheet">
+    <div>
       {book.sheets.length > 1 && (
         <div class="sheet-tabs" role="tablist">
           {book.sheets.map((s, i) => (
@@ -159,21 +152,10 @@ export function SheetView({ book, target }: { book: Workbook; target?: SheetTarg
 
       <div class="sheet-scroll" ref={box}>
         <table class={`sheet-table ${book.header ? '' : 'sheet-table--grid'}`}>
-          <colgroup>
-            <col class="sheet-no-col" />
-            {widths.map((w, i) => <col key={i} style={{ width: `${w}px` }} />)}
-          </colgroup>
-          <thead>
-            <tr>
-              <th class="sheet-no" />
-              {widths.map((_, i) => (
-                <th key={i} title={head?.[i]}>{head ? (head[i] ?? '') : columnName(i)}</th>
-              ))}
-            </tr>
-          </thead>
+          {header}
           <tbody>
             {above > 0 && <tr class="sheet-gap" style={{ height: `${above}px` }} />}
-            <Rows rows={rows} from={start} to={end} first={firstNumber} widths={widths} hit={hit} />
+            <Rows rows={rows} from={start} to={end} first={skip + 1} columns={widths.length} hit={hit} />
             {below > 0 && <tr class="sheet-gap" style={{ height: `${below}px` }} />}
           </tbody>
         </table>

@@ -108,19 +108,20 @@ async function exportHtmlPdf(meta: DocMeta) {
 
 /** What the document turns into in Drive. A rendered document and an HTML one from the archive
  *  travel as the page we show, a table becomes a Google table, the rest stay the file itself. */
-function driveTarget(meta: DocMeta, render: Render): { name: string; targetType?: string } {
-  if (render.kind === 'html' || render.kind === 'frame') {
-    return { name: driveName(meta.path, true), targetType: GOOGLE_DOC };
-  }
-  const targetType = googleTypeFor(meta.content_type);
+interface DriveTarget {
+  name: string;
+  targetType?: string;
+}
+
+function driveTarget(meta: DocMeta, render: Render): DriveTarget {
+  const targetType = render.kind === 'html' || render.kind === 'frame' ? GOOGLE_DOC : googleTypeFor(meta.content_type);
   return { name: driveName(meta.path, !!targetType), targetType };
 }
 
 /** Sends the document to the employee's own Drive, straight from the browser, so it is created
  *  under their account and not the service's. */
-async function exportToDrive(clientId: string, meta: DocMeta, render: Render): Promise<string> {
-  const { name, targetType } = driveTarget(meta, render);
-
+async function exportToDrive(clientId: string, meta: DocMeta, render: Render, target: DriveTarget): Promise<string> {
+  const { name, targetType } = target;
   if (render.kind === 'html' || render.kind === 'frame') {
     const html =
       render.kind === 'html'
@@ -145,6 +146,7 @@ function DocHeader({ meta, render }: { meta: DocMeta; render: Render }) {
   const [drive, setDrive] = useState<DriveState | null>(null);
   const printable = kind === 'html' || kind === 'text' || kind === 'frame' || kind === 'sheet';
   const clientId = build.value?.google_client_id ?? null;
+  const target = driveTarget(meta, render);
 
   // The script is loaded in advance: the sign-in window must open on the click itself
   useEffect(() => {
@@ -162,9 +164,9 @@ function DocHeader({ meta, render }: { meta: DocMeta; render: Render }) {
   function onDrive() {
     if (!clientId) return;
     setDrive({ busy: true });
-    exportToDrive(clientId, meta, render)
-      .then((link) => setDrive({ busy: false, link }))
-      .catch((e: Error) => setDrive({ busy: false, error: e.message }));
+    exportToDrive(clientId, meta, render, target)
+      .then((link) => setDrive({ link }))
+      .catch((e: Error) => setDrive({ error: e.message }));
   }
 
   return (
@@ -189,13 +191,13 @@ function DocHeader({ meta, render }: { meta: DocMeta; render: Render }) {
           </button>
         )}
         {clientId && (
-          <button type="button" class="pill pill-link" title="Save to my Google Drive" disabled={drive?.busy} onClick={onDrive}>
+          <button type="button" class="pill pill-link" title="Save to my Google Drive" disabled={!!drive && 'busy' in drive} onClick={onDrive}>
             <Upload size={13} /> Drive
           </button>
         )}
       </div>
       {drive && (
-        <DriveDialog name={driveTarget(meta, render).name} state={drive} onClose={() => setDrive(null)} onRetry={onDrive} />
+        <DriveDialog name={target.name} state={drive} onClose={() => setDrive(null)} onRetry={onDrive} />
       )}
     </header>
   );

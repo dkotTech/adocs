@@ -7,9 +7,8 @@ use sha2::{Digest, Sha256};
 
 use super::archive::{Format, detect_format, read_tar, read_zip};
 use super::cache::{BUF_SIZE, VERSION_NAME_LEN, hex, too_big};
-use crate::config::SheetLimits;
-
 use super::index::{Index, assemble};
+use crate::config::SheetLimits;
 use crate::paths;
 
 /// An extracted file, before the index is built.

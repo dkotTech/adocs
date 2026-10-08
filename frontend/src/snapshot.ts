@@ -1,4 +1,5 @@
 import { rawUrl } from './api/docs';
+import { escapeHtml } from './marks';
 import { dirOf, docUrl, resolveRelative } from './store';
 
 /** A picture larger than this is left as a link: a Google document should not grow by tens of
@@ -9,14 +10,11 @@ export function isRelative(href: string): boolean {
   return !/^([a-z]+:|\/|#)/i.test(href);
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
-}
-
 /** The file as a `data:` address, or null when it is unreachable or too large. */
 async function inline(url: string): Promise<string | null> {
   const res = await fetch(url);
-  if (!res.ok) return null;
+  // A size known up front saves downloading a picture that would be dropped anyway
+  if (!res.ok || Number(res.headers.get('content-length')) > MAX_INLINE_BYTES) return null;
   const blob = await res.blob();
   if (blob.size > MAX_INLINE_BYTES) return null;
   return new Promise<string | null>((resolve) => {
@@ -59,9 +57,8 @@ export async function documentHtml(path: string, title: string, body: string): P
   await Promise.all(
     Array.from(page.querySelectorAll<HTMLImageElement>('img[src]')).map(async (img) => {
       const src = img.getAttribute('src') ?? '';
-      const url = isRelative(src) ? rawUrl(resolveRelative(dir, src)) : src;
-      const data = await inline(new URL(url, location.href).href).catch(() => null);
-      img.setAttribute('src', data ?? new URL(url, location.href).href);
+      const url = new URL(isRelative(src) ? rawUrl(resolveRelative(dir, src)) : src, location.href).href;
+      img.setAttribute('src', (await inline(url).catch(() => null)) ?? url);
     }),
   );
 
@@ -82,8 +79,8 @@ export async function archiveHtml(path: string): Promise<string> {
 
   page.querySelectorAll('script').forEach((el) => el.remove());
 
-  await Promise.all(
-    Array.from(page.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]')).map(async (link) => {
+  await Promise.all([
+    ...Array.from(page.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]')).map(async (link) => {
       const css = await fetch(new URL(link.getAttribute('href') ?? '', base).href)
         .then((r) => (r.ok ? r.text() : null))
         .catch(() => null);
@@ -92,14 +89,11 @@ export async function archiveHtml(path: string): Promise<string> {
       style.textContent = css;
       link.replaceWith(style);
     }),
-  );
-
-  await Promise.all(
-    Array.from(page.querySelectorAll<HTMLImageElement>('img[src]')).map(async (img) => {
+    ...Array.from(page.querySelectorAll<HTMLImageElement>('img[src]')).map(async (img) => {
       const src = new URL(img.getAttribute('src') ?? '', base).href;
       img.setAttribute('src', (await inline(src).catch(() => null)) ?? src);
     }),
-  );
+  ]);
 
   page.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
     const href = a.getAttribute('href') ?? '';
