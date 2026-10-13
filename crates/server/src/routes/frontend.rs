@@ -2,10 +2,11 @@ use actix_web::http::StatusCode;
 use actix_web::http::header::{self, HeaderValue};
 use actix_web::{HttpRequest, HttpResponse, web};
 use rust_embed::RustEmbed;
+use std::fmt::Write;
 
 use super::{agents, file, read};
 use crate::config::Config;
-use crate::content::{DocMeta, Store};
+use crate::content::{DocMeta, Index, Store};
 use crate::errors::AppError;
 use crate::paths;
 use crate::render::escape_html;
@@ -68,10 +69,22 @@ async fn doc_page(
         .ok()
         .and_then(|p| index.get(&p).cloned());
 
+    // A directory has no file to send: agents get an index of it, the page lists it.
+    let dir = meta
+        .is_none()
+        .then(|| paths::normalize(&path).ok())
+        .flatten()
+        .filter(|p| index.is_dir(p));
+
     if wants_content(&req) {
-        let mut resp = match &meta {
-            Some(meta) => file::serve(&req, index, meta).await?,
-            None => HttpResponse::NotFound()
+        let mut resp = match (&meta, &dir) {
+            (Some(meta), _) => file::serve(&req, index, meta).await?,
+            (None, Some(dir)) => agents::generated(
+                &req,
+                "text/plain; charset=utf-8",
+                dir_index(&agents::base_url(&req, &cfg), &index, dir),
+            ),
+            (None, None) => HttpResponse::NotFound()
                 .content_type("text/plain; charset=utf-8")
                 .body(format!(
                     "Document not found: {path}\nIndex of all documents: {}/llms.txt\n",
@@ -83,8 +96,28 @@ async fn doc_page(
         return Ok(resp);
     }
 
-    Ok(match &meta {
-        Some(meta) => {
+    Ok(match (&meta, &dir) {
+        (None, Some(dir)) => {
+            let name = dir.rsplit('/').next().unwrap_or(dir);
+            let zip = format!("/zip/{}", paths::encode_url(dir));
+            let mut note = format!(
+                "<h1>{}</h1><p>The directory <code>{}</code> rendered with JavaScript. \
+                 Everything in it as one zip file: <a href=\"{zip}\">{zip}</a>. The files:</p><ul>",
+                escape_html(name),
+                escape_html(dir)
+            );
+            for doc in index.in_dir(dir) {
+                let link = format!("/docs/{}", paths::encode_url(&doc.path));
+                let _ = write!(
+                    note,
+                    "<li><a href=\"{link}\">{}</a></li>",
+                    escape_html(&doc.path[dir.len() + 1..])
+                );
+            }
+            note.push_str("</ul>");
+            page(StatusCode::OK, &cfg, Some(name), "", &note)
+        }
+        (Some(meta), _) => {
             let raw = format!("/raw/{}", paths::encode_url(&meta.path));
             let head = format!(
                 "<link rel=\"alternate\" type=\"{}\" href=\"{raw}\">",
@@ -93,12 +126,12 @@ async fn doc_page(
             page(
                 StatusCode::OK,
                 &cfg,
-                Some(meta),
+                Some(&meta.title),
                 &head,
                 &doc_note(meta, &raw),
             )
         }
-        None => {
+        (None, None) => {
             let note = format!(
                 "<p>Document not found: {}. An index of all documents: \
                  <a href=\"/llms.txt\">/llms.txt</a>.</p>",
@@ -121,12 +154,25 @@ fn doc_note(meta: &DocMeta, raw: &str) -> String {
     )
 }
 
-/// index.html with the document title, extra head tags and a note for clients that do not
+/// The directory for agents in the llms.txt format: the files under it with their summaries.
+fn dir_index(base: &str, index: &Index, dir: &str) -> String {
+    let mut out = format!(
+        "# {dir}\n\n> Everything in this directory as one zip file: {base}/zip/{}\n\n",
+        paths::encode_url(dir)
+    );
+    for doc in index.in_dir(dir) {
+        let link = format!("{base}/raw/{}", paths::encode_url(&doc.path));
+        let _ = writeln!(out, "{}", doc.index_line(&link));
+    }
+    out
+}
+
+/// index.html with the title, extra head tags and a note for clients that do not
 /// run scripts. The page removes the note as soon as it starts.
 fn page(
     status: StatusCode,
     cfg: &Config,
-    meta: Option<&DocMeta>,
+    title: Option<&str>,
     head: &str,
     note: &str,
 ) -> HttpResponse {
@@ -135,14 +181,10 @@ fn page(
     };
     let mut html = String::from_utf8_lossy(&file.data).into_owned();
 
-    if let Some(meta) = meta
+    if let Some(title) = title
         && let (Some(open), Some(close)) = (html.find("<title>"), html.find("</title>"))
     {
-        let title = format!(
-            "{} — {}",
-            escape_html(&meta.title),
-            escape_html(&cfg.site_title)
-        );
+        let title = format!("{} — {}", escape_html(title), escape_html(&cfg.site_title));
         html.replace_range(open + "<title>".len()..close, &title);
     }
     html = html.replacen("</head>", &format!("{head}</head>"), 1);

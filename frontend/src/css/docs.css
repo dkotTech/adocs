@@ -202,6 +202,30 @@
   color: var(--text-muted);
 }
 
+/* The arrow folds the directory, the rest of the row opens it */
+.tree-arrow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0 -3px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.tree-arrow-btn:hover {
+  background: var(--surface-3);
+}
+
+.tree-arrow-btn:hover .tree-arrow {
+  color: var(--text);
+}
+
+.tree-dir > .tree-row--active .tree-name {
+  color: var(--accent);
+}
+
 .tree-icon {
   flex-shrink: 0;
   opacity: 0.7;
@@ -305,6 +329,15 @@
   color: var(--text-muted);
 }
 
+.doc-path-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.doc-path-link:hover {
+  color: var(--accent);
+}
+
 .doc-path-sep {
   margin: 0 6px;
   opacity: 0.6;
@@ -322,6 +355,84 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 14px;
+}
+
+/* ── Directory listing ── */
+
+.folder-list {
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.folder-row + .folder-row {
+  border-top: 1px solid var(--border);
+}
+
+.folder-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  transition: background var(--t-fast);
+}
+
+.folder-link:hover {
+  background: var(--surface-2);
+}
+
+.folder-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-link:hover .folder-title {
+  color: var(--accent);
+}
+
+.folder-file,
+.folder-summary {
+  font-size: 12.5px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-info {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 64px;
+}
+
+.folder-date {
+  min-width: 120px;
+}
+
+@media (max-width: 720px) {
+  .folder-date {
+    display: none;
+  }
 }
 
 .doc-status {

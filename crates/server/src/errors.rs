@@ -13,6 +13,12 @@ pub enum AppError {
     #[error("too many searches at once, try again in a moment")]
     TooManyRequests,
 
+    #[error("too many downloads at once, try again in a moment")]
+    TooManyDownloads,
+
+    #[error("{0}")]
+    TooLarge(String),
+
     #[error("unknown host")]
     UnknownHost,
 
@@ -31,7 +37,8 @@ impl actix_web::ResponseError for AppError {
         match self {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound => StatusCode::NOT_FOUND,
-            AppError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
+            AppError::TooManyRequests | AppError::TooManyDownloads => StatusCode::TOO_MANY_REQUESTS,
+            AppError::TooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
             AppError::UnknownHost => StatusCode::MISDIRECTED_REQUEST,
             AppError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -39,7 +46,7 @@ impl actix_web::ResponseError for AppError {
 
     fn error_response(&self) -> HttpResponse {
         let mut resp = HttpResponse::build(self.status_code());
-        if let AppError::TooManyRequests = self {
+        if let AppError::TooManyRequests | AppError::TooManyDownloads = self {
             resp.insert_header((actix_web::http::header::RETRY_AFTER, "1"));
         }
         resp.json(serde_json::json!({ "error": self.to_string() }))

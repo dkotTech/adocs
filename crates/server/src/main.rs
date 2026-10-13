@@ -5,6 +5,8 @@ mod config;
 mod content;
 mod errors;
 mod mcp;
+mod metrics;
+mod pack;
 mod paths;
 mod render;
 mod routes;
@@ -92,6 +94,7 @@ async fn main() -> std::io::Result<()> {
                     .error_handler(|err, _| errors::AppError::bad_request(err.to_string()).into()),
             )
             .wrap(middleware::from_fn(routes::check_host))
+            .wrap(middleware::from_fn(metrics::observe))
             .wrap(middleware::Logger::default())
             .configure(routes::configure)
     })

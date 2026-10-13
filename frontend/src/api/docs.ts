@@ -9,6 +9,11 @@ export function rawUrl(path: string): string {
   return `/raw/${encodePath(path)}`;
 }
 
+/** A directory and everything under it as one zip file. */
+export function zipUrl(dir: string): string {
+  return `/zip/${encodePath(dir)}`;
+}
+
 export function getTree(): Promise<TreeNode> {
   return apiFetch<TreeNode>('/api/tree');
 }

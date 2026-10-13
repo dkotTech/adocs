@@ -13,11 +13,12 @@ mod frontend;
 mod health;
 pub mod mcp;
 mod search;
+mod zip;
 
 /// Answers only to the host names in `APP_ALLOWED_HOSTS`, when the list is set. Behind access control,
 /// a malicious page could otherwise read the documentation through DNS rebinding in an employee's
-/// browser: the request would carry the attacker's host name. The liveness check stays open for
-/// probes that come by IP address.
+/// browser: the request would carry the attacker's host name. The liveness check and the metrics
+/// stay open for probes and scrapers that come by IP address.
 pub async fn check_host(
     req: ServiceRequest,
     next: Next<impl MessageBody>,
@@ -26,7 +27,7 @@ pub async fn check_host(
         .app_data::<web::Data<Config>>()
         .map(|cfg| cfg.allowed_hosts.as_slice())
         .unwrap_or_default();
-    if !allowed.is_empty() && req.path() != "/pub/health" {
+    if !allowed.is_empty() && !matches!(req.path(), "/pub/health" | "/metrics") {
         let host = req
             .headers()
             .get(header::HOST)
@@ -46,6 +47,7 @@ fn read() -> Route {
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/pub/health", read().to(health::health))
+        .route("/metrics", read().to(crate::metrics::metrics))
         // Standard entry points for AI agents and crawlers.
         .route("/llms.txt", read().to(agents::llms_txt))
         .route("/robots.txt", read().to(agents::robots_txt))
@@ -54,6 +56,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/mcp", web::route().to(mcp::handle))
         // Raw document content.
         .route("/raw/{path:.*}", read().to(docs::raw))
+        // A directory and everything under it as one zip file.
+        .route("/zip/{path:.*}", read().to(zip::zip))
         .service(
             web::scope("/api")
                 .route("/tree", read().to(docs::tree))

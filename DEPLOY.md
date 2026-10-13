@@ -42,9 +42,13 @@ the variables are listed in `README.md`.
 - **Set `APP_BASE_URL`** to the public URL, so `llms.txt`, the sitemap and agent links are absolute and
   correct. Use `APP_TRUST_FORWARDED=true` only behind a proxy that overwrites `X-Forwarded-*`.
 - **Set `APP_ALLOWED_HOSTS`** to the public host name(s) when the docs are sensitive (DNS rebinding).
-  Health checks on `/pub/health` are exempt, so probes by pod IP keep working.
+  Health checks on `/pub/health` and `/metrics` are exempt, so probes and scrapes by pod IP keep working.
 - **Probes**: liveness and readiness on `GET /pub/health`. It answers even without an archive; check
   `GET /api/build` to confirm the archive is loaded.
+- **Metrics**: `GET /metrics` in the Prometheus format: process CPU, memory, file descriptors and
+  threads, requests and their duration by route and status, documents and size of the loaded archive,
+  `adocs_refresh_error` for a failed refresh. Nothing in it is sensitive beyond route names, but it
+  is meant for the in-cluster scraper, not the public ingress.
 - **Pin versions** of the adocs image or binary in CI, so docs builds are reproducible.
 - **Do not cache HTML aggressively** in a CDN: pages and indexes vary by `Accept` and use ETags with
   `no-cache`. `/raw/*` is safe to cache with revalidation.

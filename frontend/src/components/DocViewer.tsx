@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { rawUrl } from '../api/docs';
 import type { DocMeta, Render } from '../api/types';
-import { build, currentPath, dirOf, doc, docError, docLoading, docUrl, formatDate, formatSize, openDoc, resolveRelative } from '../store';
+import { build, currentPath, dirOf, doc, docError, docLoading, docUrl, folder, formatDate, formatSize, openDoc, resolveRelative } from '../store';
 import { driveName, googleTypeFor, GOOGLE_DOC, loadGoogle, uploadToDrive } from '../gdrive';
 import { archiveHtml, documentHtml, isRelative } from '../snapshot';
+import { Breadcrumbs } from './Breadcrumbs';
 import { CodeView } from './CodeView';
+import { FolderView } from './FolderView';
 import { DriveDialog, type DriveState } from './DriveDialog';
 import { SheetView } from './SheetView';
 import { Download, ExternalLink, Printer, Upload } from './Icons';
@@ -45,20 +47,6 @@ function MarkdownBody({ html, path, title }: { html: string; path: string; title
   }, [html, path, title]);
 
   return <div class="md" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-function Breadcrumbs({ path }: { path: string }) {
-  const parts = path.split('/');
-  return (
-    <div class="doc-path">
-      {parts.map((p, i) => (
-        <span key={i} class={i === parts.length - 1 ? 'doc-path-last' : ''}>
-          {i > 0 && <span class="doc-path-sep">/</span>}
-          {p}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 /** The browser's print dialog; print styles in docs.css leave only the document on a light page.
@@ -251,6 +239,7 @@ export function DocViewer() {
   }, [current]);
 
   if (!path) return <Welcome />;
+  if (folder.value) return <FolderView node={folder.value} />;
   if (docLoading.value && !doc.value) return <div class="doc-skeleton" />;
   if (docError.value) {
     return (

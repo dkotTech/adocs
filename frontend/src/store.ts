@@ -9,9 +9,10 @@ import { markLine, markText, plainLines, sheetTarget, type SearchTarget } from '
 export const tree = signal<TreeNode | null>(null);
 export const treeError = signal('');
 
-// The open document
+// The open document, or the open directory: a directory is a node of the tree, nothing is fetched for it
 export const currentPath = signal<string>(pathFromLocation());
 export const doc = signal<DocResponse | null>(null);
+export const folder = signal<TreeNode | null>(null);
 export const docError = signal('');
 export const docLoading = signal(false);
 
@@ -93,13 +94,30 @@ export async function syncWithServer(): Promise<void> {
   }
 }
 
-export async function loadTree(): Promise<void> {
-  try {
-    tree.value = await getTree();
-    treeError.value = '';
-  } catch (e) {
-    treeError.value = e instanceof Error ? e.message : 'Failed to load the tree';
+/** The tree request in flight: opening a path has to know whether it is a directory. */
+let treeLoading: Promise<void> | null = null;
+
+export function loadTree(): Promise<void> {
+  treeLoading = (async () => {
+    try {
+      tree.value = await getTree();
+      treeError.value = '';
+    } catch (e) {
+      treeError.value = e instanceof Error ? e.message : 'Failed to load the tree';
+    }
+  })();
+  return treeLoading;
+}
+
+/** The node at a path, or null when the tree has no such document or directory. */
+export function findNode(path: string): TreeNode | null {
+  let node = tree.value;
+  if (!node) return null;
+  for (const part of path.split('/')) {
+    node = node.children.find((c) => c.name === part) ?? null;
+    if (!node) return null;
   }
+  return node;
 }
 
 /** Highlighting is not awaited longer than this: plain text is shown so the document is not held up. */
@@ -147,6 +165,21 @@ export async function openDoc(path: string, push = true, target: SearchTarget | 
   if (push && path !== currentPath.value) history.pushState(null, '', docUrl(path));
   currentPath.value = path;
   expandTo(path);
+
+  // A directory is shown from the tree, so the tree must be here first.
+  if (!tree.value && treeLoading) await treeLoading;
+  if (seq !== openSeq) return;
+  const node = findNode(path);
+  if (node?.is_dir) {
+    expandTo(path, true);
+    folder.value = node;
+    doc.value = null;
+    docError.value = '';
+    docLoading.value = false;
+    document.title = `${node.name} — adocs`;
+    return;
+  }
+  folder.value = null;
   docLoading.value = true;
 
   // The core and the grammar load in parallel with the document request. For markdown the block
@@ -176,11 +209,12 @@ export function toggleDir(path: string): void {
   expanded.value = next;
 }
 
-/** Expands every directory on the way to a document. */
-export function expandTo(path: string): void {
+/** Expands every directory on the way to a path, and the path itself when it is a directory. */
+export function expandTo(path: string, self = false): void {
   const parts = path.split('/');
   const next = new Set(expanded.value);
   for (let i = 1; i < parts.length; i++) next.add(parts.slice(0, i).join('/'));
+  if (self) next.add(path);
   expanded.value = next;
 }
 

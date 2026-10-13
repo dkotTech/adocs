@@ -77,6 +77,20 @@ impl Index {
         self.by_path.get(path).map(|i| &self.docs[*i])
     }
 
+    /// The documents under a directory, in path order. Directories are not stored: a path is a
+    /// directory when a document lies under it.
+    pub fn in_dir<'a>(&'a self, dir: &'a str) -> impl Iterator<Item = &'a DocMeta> + 'a {
+        self.docs.iter().filter(move |d| {
+            d.path.len() > dir.len()
+                && d.path.starts_with(dir)
+                && d.path.as_bytes()[dir.len()] == b'/'
+        })
+    }
+
+    pub fn is_dir(&self, dir: &str) -> bool {
+        self.in_dir(dir).next().is_some()
+    }
+
     /// The file's path on disk. It is only joined for paths taken from the index,
     /// an arbitrary path from a request never reaches here.
     pub fn file_path(&self, path: &str) -> Option<PathBuf> {

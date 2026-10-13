@@ -40,13 +40,36 @@ function TreeItem({ node, q, depth, onOpen }: ItemProps) {
 
   if (node.is_dir) {
     const open = q !== '' || expanded.value.has(node.path);
+    const active = currentPath.value === node.path;
+    // The row opens the directory as a page; only the arrow folds it
     return (
       <li class="tree-dir" role="treeitem" aria-expanded={open}>
-        <button type="button" class="tree-row" style={indent} onClick={() => toggleDir(node.path)}>
-          <ChevronRight class={`tree-arrow ${open ? 'tree-arrow--open' : ''}`} size={14} />
+        <a
+          class={`tree-row tree-link ${active ? 'tree-row--active' : ''}`}
+          style={indent}
+          href={docUrl(node.path)}
+          title={node.path}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+            e.preventDefault();
+            onOpen(node.path);
+          }}
+        >
+          <span
+            class="tree-arrow-btn"
+            role="button"
+            aria-label={open ? 'Collapse' : 'Expand'}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleDir(node.path);
+            }}
+          >
+            <ChevronRight class={`tree-arrow ${open ? 'tree-arrow--open' : ''}`} size={14} />
+          </span>
           <Folder class="tree-icon" size={15} />
           <span class="tree-name">{node.name}</span>
-        </button>
+        </a>
         <div class={`tree-children ${open ? 'tree-children--open' : ''}`}>
           <ul class="tree" role="group">
             {node.children
