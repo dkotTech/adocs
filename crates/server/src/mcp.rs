@@ -8,7 +8,7 @@ use std::path::Path;
 
 use actix_web::web;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -227,8 +227,8 @@ impl Docs {
 
 #[tool_handler]
 impl ServerHandler for Docs {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("adocs", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
                 "{}: documentation of a repository. Find files with search or list_docs, then \

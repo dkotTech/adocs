@@ -1,21 +1,22 @@
 {
   "name": "adocs-frontend",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@preact/signals": "^2.8.1",
+    "@preact/signals": "^2.11.3",
     "@shikijs/langs": "^4.4.3",
     "@shikijs/themes": "^4.4.3",
-    "preact": "^10.26",
+    "preact": "^11.0.1",
     "shiki": "^4.4.3"
   },
   "devDependencies": {
-    "@preact/preset-vite": "^2.10",
-    "typescript": "^5.7",
-    "vite": "^6.2"
+    "@preact/preset-vite": "^2.10.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
   }
 }

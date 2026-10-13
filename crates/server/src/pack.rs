@@ -123,7 +123,7 @@ fn dos_time(t: Option<DateTime<Utc>>) -> (u16, u16) {
         return (1 << 5 | 1, 0);
     };
     let date = ((t.year() - 1980) as u16) << 9 | (t.month() as u16) << 5 | t.day() as u16;
-    let time = (t.hour() as u16) << 11 | (t.minute() as u16) << 5 | (t.second() as u16) / 2;
+    let time = (t.hour() as u16) << 11 | (t.minute() as u16) << 5 | (t.second() / 2) as u16;
     (date, time)
 }
 

@@ -28,11 +28,14 @@ export default defineConfig({
       '/robots.txt': BACKEND,
       '/sitemap.xml': BACKEND,
       '/pub': BACKEND,
+      '/zip': BACKEND,
+      '/mcp': BACKEND,
+      '/metrics': BACKEND,
     },
   },
   build: {
     rollupOptions: {
-      input: { index: resolve(__dirname, 'index.html') },
+      input: { index: resolve(import.meta.dirname, 'index.html') },
     },
   },
 });

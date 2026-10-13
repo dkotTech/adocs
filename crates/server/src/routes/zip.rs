@@ -75,11 +75,11 @@ pub async fn zip(
             tx: tx.clone(),
             buf: Vec::with_capacity(CHUNK),
         };
-        if let Err(e) = pack::write(&index, &dir, &mut pipe).and_then(|_| pipe.flush()) {
-            if e.kind() != io::ErrorKind::BrokenPipe {
-                tracing::warn!("zip of {dir}: {e}");
-                let _ = tx.blocking_send(Err(e));
-            }
+        if let Err(e) = pack::write(&index, &dir, &mut pipe).and_then(|_| pipe.flush())
+            && e.kind() != io::ErrorKind::BrokenPipe
+        {
+            tracing::warn!("zip of {dir}: {e}");
+            let _ = tx.blocking_send(Err(e));
         }
     });
 
